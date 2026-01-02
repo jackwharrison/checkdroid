@@ -197,6 +197,10 @@ html, body{
   flex:1 0 auto;             /* take remaining space under topbar */
   box-sizing:border-box;
 }
+/* Login page: use full width/height under header */
+.page.login-page{
+  padding:0;
+}
 
 
 /* =========================
@@ -398,4 +402,140 @@ input, select{
   background-color:#ffffff; /* white */
   -webkit-mask: url("icons/play.svg") no-repeat center/contain;
   mask: url("icons/play.svg") no-repeat center/contain;
+}
+
+/* =========================
+   Login page layout
+========================= */
+/* =========================
+   Login page layout
+========================= */
+
+.login-layout{
+  display:flex;
+  height:calc(100vh - 48px);   /* full height under 48px top bar */
+}
+
+/* Left login column */
+.login-panel{
+  flex:0 0 420px;
+  max-width:460px;
+  padding:32px 32px 24px;
+  background:#ffffff;
+  display:flex;
+  flex-direction:column;
+}
+
+/* Right side: hero image + cookie overlay */
+.login-hero{
+  flex:1 1 auto;
+  overflow:hidden;
+  background:#000;
+  position:relative;            /* needed for overlay */
+}
+
+.login-hero img{
+  width:100%;
+  height:100%;
+  display:block;
+  object-fit:cover;
+}
+
+/* Titles / text on left */
+.login-title{
+  margin:0 0 4px 0;
+  font-size:20px;
+  font-weight:600;
+}
+
+.login-subtitle{
+  margin:0 0 16px 0;
+  font-size:13px;
+  color:var(--muted);
+}
+
+.login-error{
+  margin-bottom:12px;
+  padding:10px 12px;
+  border-radius:8px;
+  background:#fef2f2;
+  border:1px solid #fecaca;
+  color:#b91c1c;
+  font-size:13px;
+}
+
+.login-form{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  margin-top:8px;
+}
+
+.login-btn{
+  margin-top:10px;
+}
+
+.login-links{
+  margin-top:8px;
+  font-size:12px;
+  color:var(--muted);
+}
+
+.login-link{
+  color:#2563eb;
+  text-decoration:none;
+  font-size:12px;
+}
+.login-link:hover{
+  text-decoration:underline;
+}
+
+.login-privacy{
+  margin-top:4px;
+  font-size:12px;
+  color:var(--muted);
+}
+
+.login-language{
+  margin-top:auto;
+  padding-top:16px;
+  font-size:12px;
+  color:var(--muted);
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.login-language select{
+  font-size:12px;
+  padding:6px 8px;
+  border-radius:8px;
+  border:1px solid var(--line);
+  background:#fff;
+}
+
+/* Cookie card overlaid at bottom of image */
+.login-cookie-card{
+  position:absolute;
+  left:0;
+  right:0;
+  bottom:0;
+  background:#f3f4f6;           /* light grey like 121 */
+  padding:12px 16px;
+  font-size:11px;
+  color:#111827;
+  border-top:1px solid #e5e7eb;
+  max-height:40%;
+  overflow:auto;
+}
+
+.login-cookie-card h2{
+  margin:0 0 4px 0;
+  font-size:12px;
+  font-weight:600;
+}
+
+.login-cookie-card p{
+  margin:4px 0;
+  line-height:1.35;
 }

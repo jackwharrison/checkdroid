@@ -1,25 +1,98 @@
 {% extends "base.html" %}
-{% block title %}Login - CheckDroid{% endblock %}
+{% block title %}Log in – CheckDroid{% endblock %}
+{% block page_class %}login-page{% endblock %}
 
 {% block content %}
-  <div class="center-wrap">
-    <div class="card auth-card">
-      <div class="card-title">Login</div>
-      <div class="muted small">121 URL: {{ url121 or "Not set" }}</div>
 
-      <form method="post" class="form">
-        <label>Username</label>
-        <input name="username" required />
+<div class="login-layout">
 
-        <label>Password</label>
-        <input name="password" type="password" required />
+  <!-- Left: login panel -->
+  <section class="login-panel">
+    <h1 class="login-title">Log in</h1>
+    <p class="login-subtitle">
+      Use your work e-mail to log in.
+    </p>
 
-        <button class="btn btn-primary" type="submit">Sign in</button>
-      </form>
+    {% if error %}
+      <div class="login-error">{{ error }}</div>
+    {% endif %}
 
-      <div class="muted small">
-        Need to set the URL? <a class="link-dark" href="{{ url_for('config') }}">Open config</a>
+    <form method="post" class="login-form" novalidate>
+      <div class="field">
+        <label class="label" for="email">E-mail</label>
+        <input
+          id="email"
+          name="username"
+          type="email"
+          required
+          autocomplete="username"
+          placeholder="yourname@example.org"
+        >
       </div>
+
+      <div class="field">
+        <label class="label" for="password">Password</label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          required
+          autocomplete="current-password"
+        >
+      </div>
+
+      <button type="submit" class="btn btn-primary login-btn">
+        Log in
+      </button>
+
+      <div class="login-links">
+        <a href="#" class="login-link">Forgot your password?</a>
+        <span> | </span>
+        <a href="#" class="login-link">Request a password reset</a>
+      </div>
+
+      <div class="login-privacy">
+        Read our <a href="#" class="login-link">Privacy notice</a>
+      </div>
+    </form>
+
+    <div class="login-language">
+      <span>Language:</span>
+      <select>
+        <option>English</option>
+      </select>
     </div>
-  </div>
+  </section>
+
+  <!-- Right: hero image + overlaid cookie card -->
+  <section class="login-hero">
+    <img
+      src="{{ url_for('static', filename='login.jpeg') }}"
+      alt="Market vendor smiling"
+    >
+
+    <div class="login-cookie-card">
+      <h2>Cookie policy</h2>
+      <p>
+        Necessary cookies are required for the basic operation of the platform.
+        They do not require explicit consent, and by using our website, you agree
+        to their use. However, you may still manage or block these cookies via
+        your browser settings.
+      </p>
+      <p>
+        Managing cookies: Most web browsers allow you to control cookies through
+        their settings. If you wish to disable cookies, please refer to your
+        browser’s help section. Note that disabling necessary cookies may affect
+        the website’s functionality.
+      </p>
+      <p>
+        Contact us: If you have any questions about our use of necessary cookies,
+        please feel free to contact us at
+        <a href="mailto:support@121.global">support@121.global</a>.
+      </p>
+    </div>
+  </section>
+
+</div>
+
 {% endblock %}
