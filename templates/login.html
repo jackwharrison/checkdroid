@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Login - CheckDroid{% endblock %}
+
+{% block content %}
+  <div class="center-wrap">
+    <div class="card auth-card">
+      <div class="card-title">Login</div>
+      <div class="muted small">121 URL: {{ url121 or "Not set" }}</div>
+
+      <form method="post" class="form">
+        <label>Username</label>
+        <input name="username" required />
+
+        <label>Password</label>
+        <input name="password" type="password" required />
+
+        <button class="btn btn-primary" type="submit">Sign in</button>
+      </form>
+
+      <div class="muted small">
+        Need to set the URL? <a class="link-dark" href="{{ url_for('config') }}">Open config</a>
+      </div>
+    </div>
+  </div>
+{% endblock %}

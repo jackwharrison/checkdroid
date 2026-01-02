@@ -1,0 +1,401 @@
+:root{
+  --bg:#f3f4f6;
+  --card:#ffffff;
+  --ink:#111827;
+  --muted:#6b7280;
+  --line:#e5e7eb;
+  --navy:#0b2a5b;
+  --purple:#5b21b6;
+  --radius:10px;
+  --shadow:0 10px 30px rgba(0,0,0,0.06);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  background:var(--bg);
+  color:var(--ink);
+
+  min-height:100vh;          /* fill screen vertically */
+  display:flex;              /* stack header + page */
+  flex-direction:column;
+}
+
+html{
+  box-sizing:border-box;
+}
+html, body{
+  overflow-x:hidden;         /* kill any horizontal scroll */
+}
+
+
+/* =========================
+   Top bar
+========================= */
+.topbar{
+  height:48px;
+  background:var(--navy);
+  color:#fff;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:0 14px;
+}
+
+.topbar-left{display:flex; align-items:center; gap:10px}
+/* =========================
+   Account dropdown in header
+========================= */
+
+.header-account-wrapper{
+  display:flex;
+  align-items:center;
+  gap:16px;
+  position:relative;
+}
+
+.account-dropdown{
+  position:relative;
+}
+
+/* Icons */
+.account-icon-svg{
+  width:16px;
+  height:16px;
+  filter:invert(100%);         /* white on navy bar */
+}
+
+.account-arrow-svg{
+  width:12px;
+  height:12px;
+  filter:invert(100%);
+  margin-left:4px;
+  transition:transform 0.15s ease;
+}
+
+/* Button */
+.account-btn{
+  background:transparent;
+  border:none;
+  color:#ffffff;
+  padding:6px 10px;
+  border-radius:18px;
+  cursor:pointer;
+  font-size:14px;
+  font-weight:500;
+  display:flex;
+  align-items:center;
+  gap:6px;
+  transition:border 0.2s ease, background-color 0.15s ease;
+}
+
+.account-btn:hover{
+  border:1px solid rgba(255,255,255,0.9);
+  background-color:rgba(255,255,255,0.05);
+}
+
+/* Rotate arrow when open */
+.account-btn.active .account-arrow-svg{
+  transform:rotate(180deg);
+}
+
+/* Dropdown menu */
+.account-menu{
+  position:absolute;
+  background:#ffffff;
+  top:40px;
+  right:0;
+  min-width:220px;
+  border-radius:8px;
+  box-shadow:0 4px 14px rgba(0,0,0,0.15);
+  z-index:3001;
+  padding:10px 0;
+}
+
+.hidden{
+  display:none;
+}
+
+.account-menu-item{
+  padding:10px 16px;
+  font-size:14px;
+  text-decoration:none;
+  color:#000;
+  display:block;
+}
+
+.account-menu-item:hover{
+  background:#f2f2f2;
+}
+
+.account-menu-divider{
+  border-top:1px solid #e5e7eb;
+  margin:6px 0;
+}
+
+.user-info{
+  font-size:13px;
+}
+
+.icon-btn{
+  border:none; background:transparent; color:#fff;
+  font-size:18px; cursor:pointer; padding:6px 8px;
+}
+
+.brand{display:flex; align-items:center; gap:8px}
+.brand-mark{
+  background:#fff; color:var(--navy);
+  border-radius:6px; padding:2px 6px;
+  font-weight:700; font-size:12px;
+}
+.brand-text{font-weight:600; font-size:18px}
+
+/* Status pill (online/offline) */
+.pill{
+  font-size:12px;
+  padding:3px 10px;
+  border-radius:999px;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  font-weight:600;
+}
+
+/* Online style */
+.pill-online{
+  background:#e0f2d8;      /* light green */
+  color:#166534;           /* dark green text */
+}
+
+/* Offline style (optional, for later) */
+.pill-offline{
+  background:#fee2e2;      /* light red */
+  color:#b91c1c;           /* dark red */
+}
+
+/* Wifi icon in pill, uses wifi.svg mask */
+.pill .pill-icon{
+  width:14px;
+  height:14px;
+  flex:0 0 auto;
+  background-color:currentColor;   /* same as text color */
+  -webkit-mask: url("icons/wifi.svg") no-repeat center/contain;
+  mask: url("icons/wifi.svg") no-repeat center/contain;
+}
+
+
+.account{display:flex; gap:12px; align-items:center; font-size:12px}
+.link{color:#e5e7eb; text-decoration:underline}
+.muted-light{color:#e5e7eb}
+
+/* =========================
+   Layout
+========================= */
+.page{
+  padding:28px;
+  flex:1 0 auto;             /* take remaining space under topbar */
+  box-sizing:border-box;
+}
+
+
+/* =========================
+   Auth pages
+========================= */
+.center-wrap{display:flex; justify-content:center; padding-top:24px}
+.auth-card{
+  width:440px;
+  padding:18px;
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow);
+}
+
+.form{display:flex; flex-direction:column; gap:10px; margin:14px 0}
+input, select{
+  padding:10px 12px;
+  border-radius:10px;
+  border:1px solid var(--line);
+  outline:none;
+}
+
+.muted{color:var(--muted)}
+.small{font-size:12px}
+.link-dark{color:var(--ink); text-decoration:underline}
+
+/* Flash messages */
+.flash-wrap{max-width:720px; margin-bottom:14px}
+.flash{
+  background:#fff;
+  border:1px solid var(--line);
+  border-left:4px solid #f59e0b;
+  padding:10px 12px;
+  border-radius:10px;
+  box-shadow:var(--shadow);
+}
+
+/* =========================
+   Generic card (if needed elsewhere)
+========================= */
+.card{
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow);
+}
+
+/* =========================================================
+   PROGRAM CARDS (landing page)
+========================================================= */
+
+/* Container and row for cards */
+.cards-container{
+  max-width:1200px;
+  margin:0 auto;
+}
+
+.cards-row{
+  display:grid;
+  grid-template-columns: repeat(2, 500px);  /* two 500px columns */
+  gap:24px;
+  justify-content:center;                   /* center the 2-col grid in container */
+  align-items:flex-start;
+}
+
+
+/* Program card: wide, fixed, taller aspect */
+.card-program{
+  flex:0 0 500px;
+  width:500px;
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:18px;
+  box-shadow:var(--shadow);
+  display:flex;
+  flex-direction:column;
+  min-height:280px;
+}
+
+/* Main body of card */
+.card-main{
+  padding:20px 24px 12px 24px;
+  flex:1 0 auto;
+  display:flex;
+  flex-direction:column;
+}
+
+/* Title */
+.card-title{
+  margin:0 0 10px 0;
+  font-weight:600;
+  font-size:21px;
+  line-height:1.3;
+}
+
+/* Sync row */
+.sync-row{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  margin-bottom:16px;
+  font-size:14px;
+}
+
+.sync-link{
+  color:#2563eb;
+  text-decoration:none;
+}
+.sync-link:hover{
+  text-decoration:underline;
+}
+
+/* Sync icon using SVG mask */
+.sync-icon{
+  width:16px;
+  height:16px;
+  flex:0 0 auto;
+  background-color:#2563eb; /* same colour as sync text */
+  -webkit-mask: url("icons/sync.svg") no-repeat center/contain;
+  mask: url("icons/sync.svg") no-repeat center/contain;
+}
+
+/* Stats row: pinned just above footer */
+.stats{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-end;
+  margin-top:auto;      /* pushes stats to bottom of card-main */
+  padding-top:18px;
+}
+
+.stat{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  flex:0 0 auto;
+}
+
+.stat-value{
+  font-weight:700;
+  font-size:34px;
+  line-height:1;
+}
+
+.stat-label{
+  font-size:13px;
+  color:var(--muted);
+  line-height:1.2;
+}
+
+/* Footer with divider + button */
+.card-footer{
+  border-top:1px solid var(--line);
+  padding:12px 24px 16px 24px;
+}
+
+/* =========================================================
+   Buttons (incl. CTA on cards)
+========================================================= */
+.btn{
+  border:none;
+  border-radius:999px;
+  padding:10px 16px;
+  font-weight:600;
+  cursor:pointer;
+  width:100%;
+  background:var(--purple);
+  color:#fff;
+
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+
+  transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.btn-primary{
+  background:var(--purple);
+  color:#fff;
+}
+
+.btn-primary:hover{
+  background:#6d28d9;      /* slightly lighter than #5b21b6 */
+  transform:translateY(-1px);
+}
+
+.btn-primary:active{
+  background:#4c1d95;      /* a touch darker on click (optional) */
+  transform:translateY(0);
+}
+
+/* Play icon in button using SVG mask */
+.btn-icon{
+  width:14px;
+  height:14px;
+  flex:0 0 auto;
+  background-color:#ffffff; /* white */
+  -webkit-mask: url("icons/play.svg") no-repeat center/contain;
+  mask: url("icons/play.svg") no-repeat center/contain;
+}

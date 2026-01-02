@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Config - CheckDroid{% endblock %}
+
+{% block content %}
+  <div class="center-wrap">
+    <div class="card auth-card">
+      <div class="card-title">Configuration</div>
+
+      <form method="post" class="form">
+        <label>121 Base URL</label>
+        <input name="url121" value="{{ cfg.url121 }}" placeholder="https://..." required />
+
+        <label>Verify TLS</label>
+        <select name="VERIFY_TLS">
+          <option value="true" {% if cfg.VERIFY_TLS %}selected{% endif %}>true</option>
+          <option value="false" {% if not cfg.VERIFY_TLS %}selected{% endif %}>false</option>
+        </select>
+
+        <button class="btn btn-primary" type="submit">Save</button>
+      </form>
+
+      <div class="muted small">
+        After saving, <a class="link-dark" href="{{ url_for('login') }}">go to login</a>.
+      </div>
+    </div>
+  </div>
+{% endblock %}

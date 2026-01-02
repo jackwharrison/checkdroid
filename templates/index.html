@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}CheckDroid{% endblock %}
+
+{% block content %}
+
+  <div class="cards-container">
+    <div class="cards-row" id="programCards">
+      <!-- program cards injected by JS -->
+    </div>
+  </div>
+
+  <script>
+    (function () {
+        const syncIconUrl = "{{ url_for('static', filename='icons/sync.svg') }}";
+        const playIconUrl = "{{ url_for('static', filename='icons/play.svg') }}";
+      function escapeHtml(str) {
+        return String(str ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function cardTemplate(program) {
+        const id = program.id;
+        const title = escapeHtml(program.title || `Program ${id}`);
+
+        return `
+          <article class="card card-program">
+            <div class="card-main">
+              <h2 class="card-title">${title}</h2>
+
+                <div class="sync-row">
+                <span class="sync-icon"></span>
+                <a href="#" class="sync-link">Syncing, keep this page open</a>
+                </div>
+
+              <div class="stats">
+                <div class="stat">
+                  <div class="stat-value">0</div>
+                  <div class="stat-label">
+                    Validated on this<br>device today
+                  </div>
+                </div>
+                <div class="stat">
+                  <div class="stat-value">2</div>
+                  <div class="stat-label">
+                    Registrations<br>Synced to device
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card-footer">
+                <button
+                class="btn btn-primary"
+                type="button"
+                onclick="window.location.href='/validate?program_id=${encodeURIComponent(id)}'"
+                >
+                <div class="btn-content">
+                    <span class="btn-icon"></span>
+                    <span>Start validating</span>
+                </div>
+                </button>
+
+            </div>
+          </article>
+        `;
+      }
+
+      async function loadPrograms() {
+        const res = await fetch("/api/programs");
+        const data = await res.json();
+        const programs = data.programs || [];
+        const container = document.getElementById("programCards");
+
+        if (!programs.length) {
+          container.innerHTML = `
+            <div class="muted small">
+              No programs available for this account.
+            </div>
+          `;
+          return;
+        }
+
+        container.innerHTML = programs.map(cardTemplate).join("");
+      }
+
+      loadPrograms().catch(err => console.error("Failed to load programs", err));
+    })();
+  </script>
+
+{% endblock %}

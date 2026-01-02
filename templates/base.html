@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>{% block title %}CheckDroid{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+  {% set user_name = session.get("admin_username") or session.get("username") %}
+
+  <header class="topbar">
+    <div class="topbar-left">
+      <button class="icon-btn" aria-label="Menu">☰</button>
+      <div class="brand">
+        <span class="brand-text">121 Portal</span>
+        <span class="pill pill-online">
+        <span class="pill-icon"></span>
+        <span>Online</span>
+        </span>
+      </div>
+    </div>
+
+    <div class="topbar-right">
+      {% if user_name %}
+        <div class="header-account-wrapper">
+          <div class="account-dropdown">
+            <button
+              class="account-btn"
+              type="button"
+              onclick="toggleAccountDropdown()"
+              aria-haspopup="true"
+              aria-expanded="false"
+            >
+              <img
+                src="{{ url_for('static', filename='icons/user.svg') }}"
+                class="account-icon-svg"
+                alt=""
+              >
+              <span>Account</span>
+              <img
+                src="{{ url_for('static', filename='icons/arrow.svg') }}"
+                class="account-arrow-svg"
+                alt=""
+              >
+            </button>
+
+            <div id="account-menu" class="account-menu hidden" role="menu">
+              <div class="account-menu-item user-info">
+                <strong>Logged in as:</strong><br>
+                {{ user_name }}
+              </div>
+
+              <div class="account-menu-divider"></div>
+
+              <a
+                href="{{ url_for('logout') }}"
+                class="account-menu-item"
+                role="menuitem"
+              >
+                Logout
+              </a>
+            </div>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  </header>
+
+  <main class="page">
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div class="flash-wrap">
+          {% for m in messages %}
+            <div class="flash">{{ m }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <script>
+    function toggleAccountDropdown() {
+      const menu = document.getElementById('account-menu');
+      const btn = document.querySelector('.account-btn');
+      if (!menu || !btn) return;
+
+      const expanded = btn.getAttribute('aria-expanded') === 'true';
+      btn.setAttribute('aria-expanded', String(!expanded));
+      menu.classList.toggle('hidden');
+      btn.classList.toggle('active');
+    }
+
+    document.addEventListener('click', function (e) {
+      const menu = document.getElementById('account-menu');
+      const btn = document.querySelector('.account-btn');
+      if (!menu || !btn) return;
+
+      // Click outside dropdown → close it
+      if (!btn.contains(e.target) && !menu.contains(e.target)) {
+        menu.classList.add('hidden');
+        btn.classList.remove('active');
+        btn.setAttribute('aria-expanded', 'false');
+      }
+    });
+  </script>
+</body>
+</html>
