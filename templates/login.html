@@ -2,6 +2,13 @@
 {% block title %}Log in – CheckDroid{% endblock %}
 {% block page_class %}login-page{% endblock %}
 
+{% block topbar_left %}
+<div class="topbar-left">
+  <div class="brand">
+    <span class="brand-text">121 Portal</span>
+  </div>
+</div>
+{% endblock %}
 {% block content %}
 
 <div class="login-layout">
@@ -13,9 +20,6 @@
       Use your work e-mail to log in.
     </p>
 
-    {% if error %}
-      <div class="login-error">{{ error }}</div>
-    {% endif %}
 
     <form method="post" class="login-form" novalidate>
       <div class="field">
@@ -27,32 +31,46 @@
           required
           autocomplete="username"
           placeholder="yourname@example.org"
+          value="{{ email or '' }}"
         >
       </div>
 
-      <div class="field">
+
+      <div class="field password-field">
         <label class="label" for="password">Password</label>
-        <input
-          id="password"
-          name="password"
-          type="password"
-          required
-          autocomplete="current-password"
-        >
+        <div class="password-input-wrap">
+          <input
+            id="password"
+            name="password"
+            type="password"
+            required
+            autocomplete="current-password"
+          >
+          <button
+            type="button"
+            class="password-toggle"
+            aria-label="Show password"
+          ></button>
+        </div>
       </div>
 
+    {% if error %}
+      <div class="login-error">{{ error }}</div>
+    {% endif %}
       <button type="submit" class="btn btn-primary login-btn">
         Log in
       </button>
 
       <div class="login-links">
-        <a href="#" class="login-link">Forgot your password?</a>
-        <span> | </span>
-        <a href="#" class="login-link">Request a password reset</a>
+        <span>Forgot your password? </span>
+        <a href="mailto:support@121.global" class="login-link">
+          Request a password reset
+        </a>
       </div>
 
+
       <div class="login-privacy">
-        Read our <a href="#" class="login-link">Privacy notice</a>
+        Read our <a href="https://portal.test.121.global/en-GB/privacy" class="login-link">Privacy notice</a>
       </div>
     </form>
 

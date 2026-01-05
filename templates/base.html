@@ -11,16 +11,18 @@
   {% set user_name = session.get("admin_username") or session.get("username") %}
 
   <header class="topbar">
+    {% block topbar_left %}
     <div class="topbar-left">
       <button class="icon-btn" aria-label="Menu">☰</button>
       <div class="brand">
         <span class="brand-text">121 Portal</span>
         <span class="pill pill-online">
-        <span class="pill-icon"></span>
-        <span>Online</span>
+          <span class="pill-icon"></span>
+          <span>Online</span>
         </span>
       </div>
     </div>
+    {% endblock %}
 
     <div class="topbar-right">
       {% if user_name %}
@@ -38,7 +40,7 @@
                 class="account-icon-svg"
                 alt=""
               >
-              <span>Account</span>
+              <span>{{ user_name }}</span>
               <img
                 src="{{ url_for('static', filename='icons/arrow.svg') }}"
                 class="account-arrow-svg"
@@ -67,6 +69,7 @@
       {% endif %}
     </div>
   </header>
+
 
   <main class="page {% block page_class %}{% endblock %}">
     {% with messages = get_flashed_messages() %}
@@ -106,6 +109,26 @@
         btn.setAttribute('aria-expanded', 'false');
       }
     });
+    // Password visibility toggles
+    document.addEventListener('DOMContentLoaded', function () {
+        var toggles = document.querySelectorAll('.password-toggle');
+
+        toggles.forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var field = btn.closest('.password-field');
+            if (!field) return;
+
+            var input = field.querySelector('input');
+            if (!input) return;
+
+            var isHidden = input.type === 'password';
+            input.type = isHidden ? 'text' : 'password';
+            btn.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
+            btn.classList.toggle('visible', isHidden);
+        });
+        });
+    });
+
   </script>
 </body>
 </html>

@@ -539,3 +539,91 @@ input, select{
   margin:4px 0;
   line-height:1.35;
 }
+
+/* ===== Login form look & feel ===== */
+
+/* Tighten spacing in the left column */
+.login-panel .field{
+  margin-bottom:14px;
+}
+
+.login-panel .label{
+  display:block;
+  font-size:13px;
+  font-weight:500;
+  margin-bottom:4px;
+}
+
+/* Make E-mail/Password fields look like the 121 ones */
+.login-panel input[type="email"],
+.login-panel input[type="password"]{
+  width:100%;
+  max-width:320px;              /* keeps fields from going too wide */
+  padding:10px 14px;
+  border-radius:999px;          /* pill shape */
+  background:#eef2ff;           /* light blue fill */
+  border:1px solid transparent; /* no strong border by default */
+  font-size:14px;
+}
+
+/* Focus state – subtle blue border like 121 */
+.login-panel input[type="email"]:focus,
+.login-panel input[type="password"]:focus{
+  outline:none;
+  border-color:#4f46e5;
+  box-shadow:0 0 0 1px rgba(79,70,229,0.25);
+}
+
+/* When browser marks them invalid (required) – red border */
+.login-panel input[type="email"]:invalid:focus,
+.login-panel input[type="password"]:invalid:focus{
+  border-color:#dc2626;
+  box-shadow:0 0 0 1px rgba(220,38,38,0.25);
+}
+
+/* Keep the login button snug under the fields */
+.login-btn{
+  margin-top:16px;
+  max-width:320px;
+}
+
+/* Password field with eye toggle */
+.password-field .password-input-wrap{
+  position:relative;
+  display:inline-flex;
+  align-items:center;
+  max-width:320px;
+  width:100%;
+}
+
+/* Give space for the eye button */
+.password-field input[type="password"],
+.password-field input[type="text"]{
+  width:100%;
+  padding-right:40px;    /* space for eye icon */
+}
+
+/* Eye toggle button */
+.password-toggle{
+  position:absolute;
+  right:10px;
+  top:50%;
+  transform:translateY(-50%);
+  width:22px;
+  height:22px;
+  border:none;
+  background:transparent;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:0;
+  color:var(--muted);
+}
+
+/* Use unicode eye as the icon */
+.password-toggle::before{
+  content:"\1F441";      /* 👁 */
+  font-size:16px;
+  line-height:1;
+}

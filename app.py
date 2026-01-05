@@ -44,31 +44,38 @@ def login_required(fn):
 # 121 client (matches Scandroid behavior you pasted)
 # -----------------------
 def login_121(base_url: str, username: str, password: str, verify_tls: bool = True):
-    url = f"{base_url.rstrip('/')}/api/users/login"
+    """
+    Try to log in to the 121 API.
+
+    Returns: (token, program_ids, error_message)
+      - token: access_token_general on success, else None
+      - program_ids: list[int] of program IDs on success, else []
+      - error_message: None on success, or a human-readable string
+    """
+    if not base_url:
+        return None, [], "System not configured: url121 is missing."
+
+    login_url = f"{base_url.rstrip('/')}/api/users/login"
     payload = {"username": username, "password": password}
 
     try:
-        res = requests.post(url, json=payload, timeout=15, verify=verify_tls)
-    except Exception as e:
-        raise RuntimeError("Unable to reach login server.") from e
+        res = requests.post(login_url, json=payload, timeout=15, verify=verify_tls)
+    except Exception:
+        return None, [], "Unable to reach login server. Please try again later."
+
+    if res.status_code == 201:
+        data = res.json()
+        token = data.get("access_token_general")
+        permissions = data.get("permissions", {}) or {}
+        program_ids = [int(pid) for pid in permissions.keys()]
+        return token, program_ids, None
 
     if res.status_code in (400, 401):
-        raise RuntimeError("Incorrect username or password.")
-    if res.status_code != 201:
-        raise RuntimeError(f"Login failed ({res.status_code}).")
+        # Wrong email/password
+        return None, [], "Invalid email or password. Double-check your credentials and try again."
 
-    j = res.json()
-    token = j.get("access_token_general")
-    if not token:
-        raise RuntimeError("Login succeeded but access_token_general was not returned.")
-
-    permissions = j.get("permissions", {}) or {}
-    try:
-        program_ids = [int(pid) for pid in permissions.keys()]
-    except Exception:
-        program_ids = list(permissions.keys())
-
-    return token, program_ids
+    # Any other HTTP status
+    return None, [], f"Login failed ({res.status_code}). Please contact support."
 
 
 def get_program_121(base_url: str, token: str, program_id: int, verify_tls: bool = True):
@@ -113,34 +120,41 @@ def create_app():
     # -----------------------
     @app.route("/login", methods=["GET", "POST"])
     def login():
-        cfg = load_config()
-        base_url = cfg.get("url121")
+        error = None
+        email_value = ""
 
         if request.method == "POST":
-            if not base_url:
-                flash("Missing url121. Set it in Config first.")
-                return redirect(url_for("config"))
-
-            username = (request.form.get("username") or "").strip()
+            email_value = (request.form.get("username") or "").strip()
             password = request.form.get("password") or ""
 
-            token, program_ids = login_121(
-                base_url=base_url,
-                username=username,
-                password=password,
-                verify_tls=cfg.get("VERIFY_TLS", True),
-            )
+            # Basic e-mail validation before calling 121
+            if not email_value or "@" not in email_value:
+                error = "Please enter a valid e-mail address."
+            elif not password:
+                error = "Password is required."
+            else:
+                config = load_config()
+                base_url = config.get("url121")
 
-            session["token121"] = token
-            session["username"] = username
-            session["program_ids"] = program_ids
-            # default selected program (first accessible)
-            if program_ids:
-                session["selected_program_id"] = int(program_ids[0])
+                token, program_ids, api_error = login_121(
+                    base_url=base_url,
+                    username=email_value,
+                    password=password,
+                    verify_tls=True,  # or config flag if you have it
+                )
 
-            return redirect(url_for("index"))
+                if api_error:
+                    # Show nice red banner, not a 500
+                    error = api_error
+                else:
+                    # Success – store session and go to landing page
+                    session["token"] = token
+                    session["username"] = email_value
+                    session["program_ids"] = program_ids
+                    return redirect(url_for("programs"))  # or your landing route name
 
-        return render_template("login.html", url121=base_url or "")
+        return render_template("login.html", error=error, email=email_value)
+
 
     @app.route("/logout")
     def logout():
