@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+{% block title %}{{ program_title }} – CheckDroid{% endblock %}
+
+{% block content %}
+<div class="validate-page" data-program-id="{{ program_id }}">
+
+  <!-- Header: program name + stats -->
+  <section class="validate-header">
+    <div class="validate-header-top">
+      <h1 class="validate-title">{{ program_title }}</h1>
+    </div>
+
+    <div class="validate-subrow">
+      <div class="sync-status">
+        <span class="sync-status-icon"></span>
+        <span class="sync-status-text" id="syncStatusText">
+          Last synced just now
+        </span>
+      </div>
+
+      <div class="validate-stats">
+        <div class="stat-chip">
+          <div class="stat-chip-value" id="statValidatedToday">0</div>
+          <div class="stat-chip-label">Validated on this device today</div>
+        </div>
+        <div class="stat-chip">
+          <div class="stat-chip-value" id="statSyncedCount">0</div>
+          <div class="stat-chip-label">Registrations synced to device</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="validate-search">
+      <label class="validate-search-label" for="searchInput">
+        Search registrations to validate
+      </label>
+      <div class="validate-search-input-wrap">
+        <span class="validate-search-icon">🔍</span>
+        <input
+          id="searchInput"
+          type="text"
+          class="validate-search-input"
+          placeholder="Search by name, phone, or reference ID"
+        >
+      </div>
+    </div>
+  </section>
+
+  <!-- List of registrations -->
+  <section class="validate-list" id="registrationList">
+    <!-- cards injected by JS -->
+  </section>
+</div>
+
+<script>
+(function() {
+  const DB_NAME = 'checkdroid';
+  const DB_VERSION = 2;         // IMPORTANT: bump to 2 (also update index page JS)
+  const REG_STORE = 'registrations';
+  const DEC_STORE = 'decisions';
+
+  const pageRoot = document.querySelector('.validate-page');
+  const programId = parseInt(pageRoot.dataset.programId, 10);
+
+  const listEl = document.getElementById('registrationList');
+  const searchInput = document.getElementById('searchInput');
+  const statSynced = document.getElementById('statSyncedCount');
+  const statValidatedToday = document.getElementById('statValidatedToday');
+  const syncStatusText = document.getElementById('syncStatusText');
+
+  let allRegistrations = [];
+  let decisionsById = new Map();
+
+  // ---------- small helpers ----------
+  function safeEscape(str) {
+    return String(str ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  function decisionFor(regId) {
+    return decisionsById.get(regId) || null;
+  }
+
+  // ---------- IndexedDB helpers ----------
+  function openDb() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+
+      req.onupgradeneeded = (event) => {
+        const db = event.target.result;
+
+        // registrations store
+        if (!db.objectStoreNames.contains(REG_STORE)) {
+          const regStore = db.createObjectStore(REG_STORE, { keyPath: 'id' });
+          regStore.createIndex('by_program', 'programId', { unique: false });
+        }
+
+        // decisions store
+        if (!db.objectStoreNames.contains(DEC_STORE)) {
+          const decStore = db.createObjectStore(DEC_STORE, { keyPath: 'id' });
+          decStore.createIndex('by_program', 'programId', { unique: false });
+        }
+      };
+
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  function loadRegistrations(db) {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(REG_STORE, 'readonly');
+      const store = tx.objectStore(REG_STORE);
+      const index = store.index('by_program');
+      const req = index.getAll(IDBKeyRange.only(programId));
+
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  function loadDecisions(db) {
+    // be defensive: DEC_STORE might not exist on very old DBs
+    if (!db.objectStoreNames.contains(DEC_STORE)) {
+      return Promise.resolve([]);
+    }
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(DEC_STORE, 'readonly');
+      const store = tx.objectStore(DEC_STORE);
+      const index = store.index('by_program');
+      const req = index.getAll(IDBKeyRange.only(programId));
+
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  // ---------- Rendering ----------
+  function renderList(filter) {
+    const q = (filter || '').trim().toLowerCase();
+    const today = new Date().toISOString().slice(0, 10);
+
+    let validatedTodayCount = 0;
+    const out = [];
+
+    for (const reg of allRegistrations) {
+      const dec = decisionFor(reg.id);
+      const status = dec ? dec.status : 'new';
+
+      if (dec && dec.status === 'validated' && dec.date && dec.date.startsWith(today)) {
+        validatedTodayCount += 1;
+      }
+
+      if (q) {
+        const haystack = [
+          reg.fullName || reg.name || '',
+          reg.phoneNumber || '',
+          reg.referenceId || String(reg.id || '')
+        ].join(' ').toLowerCase();
+
+        if (!haystack.includes(q)) continue;
+      }
+
+    const name = reg.fullName || reg.name || '(no name)';
+    const phone = reg.phoneNumber || '';
+    const ref = reg.referenceId || '';     // still available if you want it
+    const regTitle = `Registration #${reg.id}`;
+
+    const badgeText = status === 'validated' ? 'Validated' : 'New';
+    const badgeClass = status === 'validated'
+    ? 'reg-badge reg-badge-validated'
+    : 'reg-badge reg-badge-new';
+
+    out.push(`
+    <article class="reg-card">
+        <div class="reg-main">
+        <div class="reg-header">
+            <div class="reg-title">${safeEscape(regTitle)}</div>
+            <span class="${badgeClass}">${badgeText}</span>
+        </div>
+        <div class="reg-body">
+            <div><strong>Name:</strong> ${safeEscape(name)}</div>
+            ${phone ? `<div><strong>Phone:</strong> ${safeEscape(phone)}</div>` : ''}
+            ${ref ? `<div><strong>ID number:</strong> ${safeEscape(ref)}</div>` : ''}
+        </div>
+        </div>
+    </article>
+    `);
+
+    }
+
+    listEl.innerHTML = out.join('') || `
+      <div class="muted small">No registrations found for this program.</div>
+    `;
+
+    statSynced.textContent = allRegistrations.length;
+    statValidatedToday.textContent = validatedTodayCount;
+  }
+
+  // ---------- Init ----------
+  openDb()
+    .then(async (db) => {
+      const [regs, decs] = await Promise.all([
+        loadRegistrations(db),
+        loadDecisions(db),
+      ]);
+
+      allRegistrations = regs || [];
+      decisionsById = new Map();
+      for (const d of decs) {
+        decisionsById.set(d.id, d);
+      }
+
+      // First render
+      renderList('');
+      syncStatusText.textContent = 'Last synced just now';
+    })
+    .catch((err) => {
+      console.error('Failed to load registrations from IndexedDB', err);
+      listEl.innerHTML = '<div class="muted small">Could not load offline data.</div>';
+      syncStatusText.textContent = 'Offline cache unavailable';
+    });
+
+  // Search handler
+  searchInput.addEventListener('input', (e) => {
+    renderList(e.target.value || '');
+  });
+})();
+</script>
+{% endblock %}

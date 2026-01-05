@@ -635,3 +635,199 @@ input, select{
 @keyframes spin{
   to { transform: rotate(360deg); }
 }
+
+/* =========================================
+   VALIDATE PAGE (per-program overview)
+========================================= */
+
+.validate-page{
+  max-width: 1120px;
+  margin: 16px auto 40px;
+  padding: 0 24px 32px;
+}
+
+/* Header area */
+.validate-header{
+  margin-bottom: 20px;
+}
+
+.validate-header-top{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:6px;
+}
+
+.validate-title{
+  margin:0;
+  font-size:20px;
+  font-weight:600;
+}
+
+/* Last synced + stats row */
+.validate-subrow{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:24px;
+  margin-bottom:18px;
+}
+
+.sync-status{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  font-size:12px;
+  color:var(--muted);
+}
+
+/* reuse the sync svg mask, but a bit softer */
+.sync-status-icon{
+  width:14px;
+  height:14px;
+  flex:0 0 auto;
+  background-color:#6b7280;
+  -webkit-mask:url("icons/sync.svg") no-repeat center/contain;
+  mask:url("icons/sync.svg") no-repeat center/contain;
+}
+
+.validate-stats{
+  display:flex;
+  gap:16px;
+}
+
+.stat-chip{
+  background:#f9fafb;
+  border:1px solid #e5e7eb;
+  border-radius:10px;
+  padding:6px 12px;
+  min-width:140px;
+}
+
+.stat-chip-value{
+  font-size:18px;
+  font-weight:700;
+  line-height:1.1;
+}
+
+.stat-chip-label{
+  font-size:11px;
+  color:var(--muted);
+  margin-top:2px;
+}
+
+/* Search bar */
+.validate-search{
+  margin-top:10px;
+}
+
+.validate-search-label{
+  display:block;
+  font-size:12px;
+  color:var(--muted);
+  margin-bottom:6px;
+}
+
+.validate-search-input-wrap{
+  display:flex;
+  align-items:center;
+  background:#f9fafb;
+  border-radius:999px;
+  border:1px solid #e5e7eb;
+  padding:0 14px;
+}
+
+.validate-search-icon{
+  font-size:13px;
+  margin-right:6px;
+  color:#6b7280;
+}
+
+.validate-search-input{
+  border:none;
+  outline:none;
+  background:transparent;
+  padding:10px 0;
+  width:100%;
+  font-size:14px;
+}
+
+/* Registration list */
+.validate-list{
+  margin-top:16px;
+}
+
+/* Registration cards */
+.reg-card{
+  background:#ffffff;
+  border-radius:10px;
+  border:1px solid #e5e7eb;
+  box-shadow:0 8px 24px rgba(0,0,0,0.02);
+  padding:12px 16px;
+  margin-bottom:10px;
+}
+
+.reg-main{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+
+.reg-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:4px;
+}
+
+.reg-title{
+  font-size:13px;
+  font-weight:600;
+}
+
+.reg-body{
+  font-size:12px;
+  color:#111827;
+}
+
+.reg-body div + div{
+  margin-top:2px;
+}
+
+/* Badges on the right */
+.reg-badge{
+  font-size:11px;
+  padding:2px 10px;
+  border-radius:999px;
+  border:1px solid transparent;
+}
+
+.reg-badge-new{
+  background:#eff6ff;
+  border-color:#bfdbfe;
+  color:#1d4ed8;
+}
+
+.reg-badge-validated{
+  background:#ecfdf3;
+  border-color:#bbf7d0;
+  color:#15803d;
+}
+
+/* Offline banner at bottom */
+.offline-banner{
+  margin-top:12px;
+  background:#f3f4f6;
+  border-radius:10px;
+  border:1px solid #e5e7eb;
+  padding:8px 12px;
+  font-size:12px;
+  color:#374151;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.offline-icon{
+  font-size:14px;
+}

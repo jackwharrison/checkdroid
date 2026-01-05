@@ -332,6 +332,48 @@ def create_app():
         except Exception:
             return jsonify({"ok": False, "error": "Invalid program_id"}), 400
         return jsonify({"ok": True, "selected_program_id": session["selected_program_id"]})
+    # -----------------------
+    # Validation page (per-program)
+    # -----------------------
+    @app.route("/validate")
+    @login_required
+    def validate():
+        program_id = request.args.get("program_id", type=int)
+        if not program_id:
+            # no program passed → back to overview
+            return redirect(url_for("index"))
+
+        allowed_programs = session.get("program_ids", [])
+        if program_id not in allowed_programs:
+            # user trying to open a program they don't have in permissions
+            flash("You do not have access to this program in CheckDroid.")
+            return redirect(url_for("index"))
+
+        cfg = load_config()
+        base_url = cfg["url121"]
+        verify_tls = cfg.get("VERIFY_TLS", True)
+        token = session["token121"]
+
+        # Get program title for header (fallback if call fails)
+        program_title = f"Program {program_id}"
+        try:
+            pdata = get_program_121(
+                base_url=base_url,
+                token=token,
+                program_id=program_id,
+                verify_tls=verify_tls,
+            )
+            title_dict = pdata.get("titlePortal", {}) or {}
+            program_title = next(iter(title_dict.values()), program_title)
+        except Exception:
+            pass
+
+        return render_template(
+            "validate.html",
+            program_id=program_id,
+            program_title=program_title,
+            username=session.get("username", ""),
+        )
 
     return app
 
