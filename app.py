@@ -105,6 +105,53 @@ def login_121(base_url: str, username: str, password: str, verify_tls: bool = Tr
 
     return token, allowed_program_ids, None
 
+def fetch_new_registrations_121(base_url: str, token: str, program_id: int, verify_tls: bool = True):
+    """
+    Fetch all registrations for a program from 121 and return only those
+    with status == 'new'. Handles pagination of the /registrations endpoint.
+    """
+    base_url = base_url.rstrip("/")
+    page = 1
+    limit = 100  # or 20 if you want default
+    all_new: list[dict] = []
+
+    while True:
+        params = {
+            "page": page,
+            "limit": limit,
+            "sortBy": "id:ASC",
+        }
+        url = f"{base_url}/api/programs/{program_id}/registrations"
+
+        res = requests.get(
+            url,
+            params=params,
+            cookies={"access_token_general": token},
+            timeout=20,
+            verify=verify_tls,
+        )
+
+        if res.status_code != 200:
+            raise RuntimeError(f"121 registrations returned {res.status_code} (page {page}).")
+
+        payload = res.json()
+        data = payload.get("data", []) or []
+        meta = payload.get("meta", {}) or {}
+
+        # Filter by status == "new"
+        for reg in data:
+            if str(reg.get("status", "")).lower() == "new":
+                all_new.append(reg)
+
+        total_pages = meta.get("totalPages", 1)
+        current_page = meta.get("currentPage", page)
+
+        if current_page >= total_pages:
+            break
+
+        page += 1
+
+    return all_new
 
 def get_program_121(base_url: str, token: str, program_id: int, verify_tls: bool = True):
     url = f"{base_url.rstrip('/')}/api/programs/{program_id}"
@@ -183,6 +230,48 @@ def create_app():
                     return redirect(url_for("index"))    # <-- send to landing page "/"
 
         return render_template("login.html", error=error, email=email_value)
+
+    @app.route("/api/registrations")
+    @login_required
+    def api_registrations():
+        cfg = load_config()
+        base_url = cfg["url121"]
+        verify_tls = cfg.get("VERIFY_TLS", True)
+
+        token = session["token121"]
+        program_id = request.args.get("program_id", type=int)
+
+        if not program_id:
+            return jsonify({"error": "Missing program_id"}), 400
+
+        # Ensure user is allowed to see this program
+        allowed_programs = session.get("program_ids", [])
+        if program_id not in allowed_programs:
+            return jsonify({"error": "Not allowed for this program"}), 403
+
+        try:
+            new_regs = fetch_new_registrations_121(
+                base_url=base_url,
+                token=token,
+                program_id=program_id,
+                verify_tls=verify_tls,
+            )
+        except Exception as e:
+            print("Error fetching registrations:", e)
+            return jsonify({"error": "Failed to fetch registrations from 121"}), 502
+
+        # Return full objects (all fields), but ensure programId is present + correct
+        full_records = []
+        for r in new_regs:
+            reg = dict(r)  # shallow copy to avoid mutating original
+            reg["programId"] = reg.get("programId", program_id)
+            full_records.append(reg)
+
+        return jsonify({
+            "program_id": program_id,
+            "count": len(full_records),
+            "registrations": full_records,
+        })
 
     @app.route("/logout")
     def logout():

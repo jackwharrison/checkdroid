@@ -9,10 +9,11 @@
     </div>
   </div>
 
+  {# Load the sync + IndexedDB logic #}
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+
   <script>
     (function () {
-        const syncIconUrl = "{{ url_for('static', filename='icons/sync.svg') }}";
-        const playIconUrl = "{{ url_for('static', filename='icons/play.svg') }}";
       function escapeHtml(str) {
         return String(str ?? "")
           .replaceAll("&", "&amp;")
@@ -27,43 +28,44 @@
         const title = escapeHtml(program.title || `Program ${id}`);
 
         return `
-          <article class="card card-program">
+          <article class="card card-program" data-program-id="${id}">
             <div class="card-main">
               <h2 class="card-title">${title}</h2>
 
-                <div class="sync-row">
+              <div class="sync-row">
                 <span class="sync-icon"></span>
-                <a href="#" class="sync-link">Syncing, keep this page open</a>
-                </div>
+                <span class="sync-status-text">
+                  Syncing, keep this page open
+                </span>
+              </div>
 
               <div class="stats">
                 <div class="stat">
-                  <div class="stat-value">0</div>
+                  <div class="stat-value validated-count">0</div>
                   <div class="stat-label">
                     Validated on this<br>device today
                   </div>
                 </div>
                 <div class="stat">
-                  <div class="stat-value">2</div>
+                  <div class="stat-value registrations-count">0</div>
                   <div class="stat-label">
-                    Registrations<br>Synced to device
+                    Registrations<br>synced to device
                   </div>
                 </div>
               </div>
             </div>
 
             <div class="card-footer">
-                <button
+              <button
                 class="btn btn-primary"
                 type="button"
                 onclick="window.location.href='/validate?program_id=${encodeURIComponent(id)}'"
-                >
+              >
                 <div class="btn-content">
-                    <span class="btn-icon"></span>
-                    <span>Start validating</span>
+                  <span class="btn-icon"></span>
+                  <span>Start validating</span>
                 </div>
-                </button>
-
+              </button>
             </div>
           </article>
         `;
@@ -84,7 +86,18 @@
           return;
         }
 
+        // Inject cards
         container.innerHTML = programs.map(cardTemplate).join("");
+
+        // After cards exist, trigger sync for each
+        if (typeof window.syncProgramCard === "function") {
+          const cards = container.querySelectorAll(".card-program[data-program-id]");
+          cards.forEach((card) => {
+            const pid = parseInt(card.dataset.programId, 10);
+            if (!pid) return;
+            window.syncProgramCard(card, pid);
+          });
+        }
       }
 
       loadPrograms().catch(err => console.error("Failed to load programs", err));
