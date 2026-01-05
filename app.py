@@ -14,6 +14,13 @@ DEFAULT_CONFIG = {
     "VERIFY_TLS": True
 }
 
+REQUIRED_PERMISSIONS = [
+    "registration:attribute.update",
+    "registration:attribute:financial.update",
+    "registration:personal.update",
+    "registration:status:markAsValidated.update",
+]
+
 
 def load_config():
     if not os.path.exists(CONFIG_PATH):
@@ -49,7 +56,7 @@ def login_121(base_url: str, username: str, password: str, verify_tls: bool = Tr
 
     Returns: (token, program_ids, error_message)
       - token: access_token_general on success, else None
-      - program_ids: list[int] of program IDs on success, else []
+      - program_ids: list[int] of programs that have ALL REQUIRED_PERMISSIONS
       - error_message: None on success, or a human-readable string
     """
     if not base_url:
@@ -63,19 +70,40 @@ def login_121(base_url: str, username: str, password: str, verify_tls: bool = Tr
     except Exception:
         return None, [], "Unable to reach login server. Please try again later."
 
-    if res.status_code == 201:
-        data = res.json()
-        token = data.get("access_token_general")
-        permissions = data.get("permissions", {}) or {}
-        program_ids = [int(pid) for pid in permissions.keys()]
-        return token, program_ids, None
-
+    # Wrong email/password
     if res.status_code in (400, 401):
-        # Wrong email/password
         return None, [], "Invalid email or password. Double-check your credentials and try again."
 
-    # Any other HTTP status
-    return None, [], f"Login failed ({res.status_code}). Please contact support."
+    # Any non-success status
+    if res.status_code != 201:
+        return None, [], f"Login failed ({res.status_code}). Please contact support."
+
+    # 201 – success, now enforce program permissions
+    data = res.json()
+    token = data.get("access_token_general")
+    permissions_by_program = data.get("permissions", {}) or {}
+
+    allowed_program_ids: list[int] = []
+
+    for pid_str, perm_list in permissions_by_program.items():
+        # Ensure perm_list is a list
+        perms = perm_list or []
+        if all(req in perms for req in REQUIRED_PERMISSIONS):
+            try:
+                allowed_program_ids.append(int(pid_str))
+            except ValueError:
+                # Ignore any weird non-int keys
+                continue
+
+    if not allowed_program_ids:
+        # User logged in, but has no programs with the full permission set
+        msg = (
+            "You do not have access to any programs with validation permissions in CheckDroid. "
+            "Please contact your 121 system administrator."
+        )
+        return None, [], msg
+
+    return token, allowed_program_ids, None
 
 
 def get_program_121(base_url: str, token: str, program_id: int, verify_tls: bool = True):
@@ -135,12 +163,13 @@ def create_app():
             else:
                 config = load_config()
                 base_url = config.get("url121")
+                verify_tls = config.get("VERIFY_TLS", True)
 
                 token, program_ids, api_error = login_121(
                     base_url=base_url,
                     username=email_value,
                     password=password,
-                    verify_tls=True,  # or config flag if you have it
+                    verify_tls=verify_tls,
                 )
 
                 if api_error:
@@ -148,13 +177,12 @@ def create_app():
                     error = api_error
                 else:
                     # Success – store session and go to landing page
-                    session["token"] = token
+                    session["token121"] = token          # <-- key matches login_required/api_programs
                     session["username"] = email_value
                     session["program_ids"] = program_ids
-                    return redirect(url_for("programs"))  # or your landing route name
+                    return redirect(url_for("index"))    # <-- send to landing page "/"
 
         return render_template("login.html", error=error, email=email_value)
-
 
     @app.route("/logout")
     def logout():
