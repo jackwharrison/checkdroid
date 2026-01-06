@@ -831,3 +831,424 @@ input, select{
 .offline-icon{
   font-size:14px;
 }
+
+/* =========================
+   Registration detail page
+========================= */
+
+.detail-layout{
+  max-width: 920px;
+  margin: 0 auto;
+}
+
+.detail-back-row{
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+
+.detail-back-link{
+  color: var(--ink);
+  text-decoration: none;
+}
+.detail-back-link:hover{
+  text-decoration: underline;
+}
+
+.detail-card{
+  background: var(--card);
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  padding: 18px 24px 20px;
+}
+
+.detail-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  margin-bottom:12px;
+}
+
+.detail-title{
+  font-size:18px;
+  font-weight:600;
+  margin-bottom:6px;
+}
+
+.detail-status-row{
+  display:flex;
+  align-items:center;
+}
+
+/* reuse existing badge styles if you already have them */
+.reg-badge{
+  display:inline-flex;
+  align-items:center;
+  padding:3px 10px;
+  border-radius:999px;
+  font-size:11px;
+}
+.reg-badge-new{
+  background:#e0edff;
+  color:#1d4ed8;
+}
+.reg-badge-validated{
+  background:#dcfce7;
+  color:#166534;
+}
+
+.detail-edit-btn{
+  border:1px solid #d1d5db;
+  background:#fff;
+  padding:6px 14px;
+  border-radius:999px;
+  font-size:12px;
+  cursor:pointer;
+}
+.detail-edit-btn:disabled{
+  opacity:0.6;
+  cursor:default;
+}
+
+.detail-fields{
+  margin:0;
+  padding:0;
+}
+.detail-field{
+  display:flex;
+  font-size:13px;
+  margin-bottom:4px;
+}
+.detail-field dt{
+  min-width:130px;
+  font-weight:600;
+}
+.detail-field dd{
+  margin:0;
+}
+
+/* Make validation cards feel clickable */
+.reg-card {
+  cursor: pointer; /* shows the hand icon */
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.reg-card:hover {
+  box-shadow: 0 6px 18px rgba(0,0,0,0.06);
+  transform: translateY(-1px);
+}
+
+/* =========================
+   Registration detail page
+========================= */
+
+.reg-detail-page {
+  padding: 24px;
+}
+
+.reg-detail-card {
+  max-width: 960px;
+  margin: 0 auto;
+  background: #ffffff;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  padding: 20px 24px 18px;
+}
+
+.reg-back-link {
+  border: none;
+  background: transparent;
+  color: #2563eb;
+  font-size: 13px;
+  padding: 0;
+  margin-bottom: 12px;
+  cursor: pointer;
+}
+
+.reg-back-link:hover {
+  text-decoration: underline;
+}
+
+.reg-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.reg-detail-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.reg-status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+}
+
+.reg-status-new {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.reg-status-validated {
+  background: #ecfdf5;
+  color: #15803d;
+}
+
+.reg-edit-btn,
+.reg-cancel-btn {
+  background: #ffffff;
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+
+/* Form layout */
+.reg-form {
+  margin-top: 4px;
+}
+
+.reg-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 24px;
+}
+
+.reg-form-field label {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.reg-form-field input {
+  width: 100%;
+}
+
+/* Actions */
+.reg-detail-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+/* Error message */
+.reg-error {
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  font-size: 12px;
+}
+
+.review-page{
+  max-width: 960px;
+  margin: 24px auto;
+}
+
+.review-card{
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+  padding: 20px 24px 18px 24px;
+}
+
+.review-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-end;
+  margin-bottom:16px;
+}
+
+.review-title{
+  margin:0;
+  font-size:20px;
+  font-weight:600;
+}
+
+.review-subtitle{
+  margin-top:2px;
+  font-size:13px;
+  color:var(--muted);
+}
+
+.review-section-title{
+  margin:0 0 8px 0;
+  font-size:14px;
+  font-weight:600;
+}
+
+.review-table{
+  width:100%;
+  border-collapse:collapse;
+  font-size:13px;
+  margin-top:4px;
+}
+
+.review-table th,
+.review-table td{
+  padding:6px 8px;
+  border-bottom:1px solid var(--line);
+  vertical-align:top;
+}
+
+.review-table th{
+  text-align:left;
+  font-weight:600;
+  color:var(--muted);
+}
+
+.review-field{
+  width:25%;
+}
+
+.review-old{
+  color:var(--muted);
+}
+
+.review-new{
+  font-weight:600;
+}
+
+.review-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:12px;
+  margin-top:16px;
+}
+
+/* REVIEW PAGE LAYOUT */
+.review-page{
+  max-width: 720px;
+  margin: 24px auto;
+}
+
+.review-card{
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+  padding: 20px 24px 18px 24px;
+}
+
+.review-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-end;
+  margin-bottom:16px;
+}
+
+.review-title{
+  margin:0;
+  font-size:20px;
+  font-weight:600;
+}
+
+.review-subtitle{
+  margin-top:2px;
+  font-size:13px;
+  color:var(--muted);
+}
+
+.review-helper{
+  margin:0 0 6px 0;
+  font-size:13px;
+  color:var(--muted);
+}
+
+.review-section-title{
+  margin:0 0 4px 0;
+  font-size:14px;
+  font-weight:600;
+}
+
+/* Changes list */
+.review-table{
+  width:100%;
+  border-collapse:collapse;
+  font-size:13px;
+  margin-top:4px;
+}
+
+.review-table th,
+.review-table td{
+  padding:6px 8px;
+  border-bottom:1px solid var(--line);
+  vertical-align:top;
+}
+
+.review-table th{
+  text-align:left;
+  font-weight:600;
+  color:var(--muted);
+}
+
+.review-field{
+  width:28%;
+}
+
+.review-old{
+  color:var(--muted);
+}
+
+.review-new{
+  font-weight:600;
+}
+
+/* Buttons area */
+.review-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:12px;
+  margin-top:16px;
+}
+
+/* Override global .btn for review page buttons */
+.review-actions .btn{
+  width:auto;
+  padding:8px 20px;
+}
+
+/* Cancel: white with purple outline */
+.review-actions .btn-secondary{
+  background:#ffffff;
+  color:var(--purple);
+  border:1px solid var(--purple);
+}
+
+.review-actions .btn-secondary:hover{
+  background:#f5f3ff;
+}
+
+/* Save & validate: keep as solid purple but a bit more tactile on hover */
+.review-actions .btn-primary{
+  background:var(--purple);
+  color:#ffffff;
+  border:1px solid var(--purple);
+}
+
+.review-actions .btn-primary:hover{
+  background:#6d28d9;
+}
+
+/* Success banner on list page */
+.validate-success-banner{
+  background:#ecfdf3;
+  border:1px solid #bbf7d0;
+  color:#166534;
+  border-radius:10px;
+  padding:8px 12px;
+  font-size:13px;
+  margin:0 auto 14px auto;
+  max-width:960px;
+}

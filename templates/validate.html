@@ -53,9 +53,22 @@
 </div>
 
 <script>
-(function() {
+(function () {
+  // --- one-shot success banner after validation ---
+  const flag = sessionStorage.getItem('checkdroid_validation_success');
+  if (flag) {
+    sessionStorage.removeItem('checkdroid_validation_success');
+    const root = document.querySelector('.validate-page') || document.querySelector('.page');
+    if (root) {
+      const banner = document.createElement('div');
+      banner.className = 'validate-success-banner';
+      banner.textContent = 'Registration successfully validated.';
+      root.prepend(banner);
+    }
+  }
+
   const DB_NAME = 'checkdroid';
-  const DB_VERSION = 2;         // IMPORTANT: bump to 2 (also update index page JS)
+  const DB_VERSION = 2;         // must match your index page
   const REG_STORE = 'registrations';
   const DEC_STORE = 'decisions';
 
@@ -124,7 +137,6 @@
   }
 
   function loadDecisions(db) {
-    // be defensive: DEC_STORE might not exist on very old DBs
     if (!db.objectStoreNames.contains(DEC_STORE)) {
       return Promise.resolve([]);
     }
@@ -165,37 +177,45 @@
         if (!haystack.includes(q)) continue;
       }
 
-    const name = reg.fullName || reg.name || '(no name)';
-    const phone = reg.phoneNumber || '';
-    const ref = reg.referenceId || '';     // still available if you want it
-    const regTitle = `Registration #${reg.id}`;
+      const name = reg.fullName || reg.name || '(no name)';
+      const phone = reg.phoneNumber || '';
+      const ref = reg.referenceId || '';
+      const regTitle = `Registration #${reg.id}`;
 
-    const badgeText = status === 'validated' ? 'Validated' : 'New';
-    const badgeClass = status === 'validated'
-    ? 'reg-badge reg-badge-validated'
-    : 'reg-badge reg-badge-new';
+      const badgeText = status === 'validated' ? 'Validated' : 'New';
+      const badgeClass = status === 'validated'
+        ? 'reg-badge reg-badge-validated'
+        : 'reg-badge reg-badge-new';
 
-    out.push(`
-    <article class="reg-card">
-        <div class="reg-main">
-        <div class="reg-header">
-            <div class="reg-title">${safeEscape(regTitle)}</div>
-            <span class="${badgeClass}">${badgeText}</span>
-        </div>
-        <div class="reg-body">
-            <div><strong>Name:</strong> ${safeEscape(name)}</div>
-            ${phone ? `<div><strong>Phone:</strong> ${safeEscape(phone)}</div>` : ''}
-            ${ref ? `<div><strong>ID number:</strong> ${safeEscape(ref)}</div>` : ''}
-        </div>
-        </div>
-    </article>
-    `);
-
+      out.push(`
+        <article class="reg-card" data-id="${reg.id}">
+          <div class="reg-main">
+            <div class="reg-header">
+              <div class="reg-title">${safeEscape(regTitle)}</div>
+              <span class="${badgeClass}">${badgeText}</span>
+            </div>
+            <div class="reg-body">
+              <div><strong>Name:</strong> ${safeEscape(name)}</div>
+              ${phone ? `<div><strong>Phone:</strong> ${safeEscape(phone)}</div>` : ''}
+              ${ref ? `<div><strong>ID number:</strong> ${safeEscape(ref)}</div>` : ''}
+            </div>
+          </div>
+        </article>
+      `);
     }
 
     listEl.innerHTML = out.join('') || `
       <div class="muted small">No registrations found for this program.</div>
     `;
+
+    // click → detail
+    listEl.querySelectorAll('.reg-card').forEach(card => {
+      const regId = Number(card.dataset.id);
+      card.addEventListener('click', () => {
+        window.location.href =
+          `/registration/${encodeURIComponent(programId)}/${encodeURIComponent(regId)}`;
+      });
+    });
 
     statSynced.textContent = allRegistrations.length;
     statValidatedToday.textContent = validatedTodayCount;
@@ -215,7 +235,6 @@
         decisionsById.set(d.id, d);
       }
 
-      // First render
       renderList('');
       syncStatusText.textContent = 'Last synced just now';
     })
@@ -231,4 +250,5 @@
   });
 })();
 </script>
+
 {% endblock %}

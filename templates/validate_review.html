@@ -1,0 +1,299 @@
+{% extends "base.html" %}
+{% block title %}Review changes – CheckDroid{% endblock %}
+
+{% block content %}
+
+<div class="review-page"
+     data-program-id="{{ program_id }}"
+     data-registration-id="{{ registration_id }}">
+
+  <div class="review-card">
+
+    <button type="button"
+            class="reg-back-link"
+            id="reviewBackBtn">
+      ← Back to editing
+    </button>
+
+    <header class="review-header">
+      <div>
+        <h1 class="review-title">Review changes</h1>
+        <div id="reviewSubtitle"
+             class="review-subtitle">
+          Registration #{{ registration_id }}
+        </div>
+      </div>
+    </header>
+
+    <section class="review-changes">
+      <h2 class="review-section-title">Changes to this registration</h2>
+      <p class="review-helper">Please review edited fields:</p>
+      <div id="changesEmpty" class="muted small" hidden>
+        No field changes – you are only providing a reason.
+      </div>
+
+      <table class="review-table" id="changesTable">
+        <thead>
+          <tr>
+            <th>Field</th>
+            <th>Before</th>
+            <th>After</th>
+          </tr>
+        </thead>
+        <tbody id="changesBody">
+          <!-- rows injected by JS -->
+        </tbody>
+      </table>
+    </section>
+
+    <form id="reviewForm" class="review-form" novalidate>
+      <div id="reviewError" class="reg-error" hidden></div>
+
+      <div class="reg-form-field">
+        <label for="reason">Provide a reason for these changes*</label>
+        <textarea id="reason"
+                  name="reason"
+                  maxlength="500"
+                  rows="3"
+                  required></textarea>
+      </div>
+
+      <div class="review-actions">
+        <button type="button"
+                class="btn btn-secondary"
+                id="reviewCancelBtn">
+          Cancel
+        </button>
+        <button type="submit"
+                class="btn btn-primary"
+                id="reviewSubmitBtn">
+          Save and validate
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+(function () {
+  const DB_NAME    = 'checkdroid';
+  const DB_VERSION = 2;
+  const REG_STORE  = 'registrations';
+
+  const REVIEW_KEY = 'checkdroid_review_payload';
+
+  const root = document.querySelector('.review-page');
+  if (!root) return;
+
+  const programId      = parseInt(root.dataset.programId, 10);
+  const registrationId = parseInt(root.dataset.registrationId, 10);
+
+  const backBtn      = document.getElementById('reviewBackBtn');
+  const changesTable = document.getElementById('changesTable');
+  const changesBody  = document.getElementById('changesBody');
+  const changesEmpty = document.getElementById('changesEmpty');
+  const reviewForm   = document.getElementById('reviewForm');
+  const reviewError  = document.getElementById('reviewError');
+  const reasonInput  = document.getElementById('reason');
+  const cancelBtn    = document.getElementById('reviewCancelBtn');
+  const submitBtn    = document.getElementById('reviewSubmitBtn');
+  const subtitleEl   = document.getElementById('reviewSubtitle');
+  const counterEl    = document.getElementById('reasonCounter');
+
+  let payload = null;
+
+  function escapeHtml(str) {
+    return String(str ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  function labelFromKey(key) {
+    return key
+      .replace(/_/g, ' ')
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/^./, c => c.toUpperCase());
+  }
+
+  function showError(msg) {
+    reviewError.textContent = msg;
+    reviewError.hidden = false;
+  }
+
+  // ---------- IndexedDB helpers ----------
+  function openDb() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror   = () => reject(req.error);
+    });
+  }
+
+  function loadRegistration(db) {
+    return new Promise((resolve, reject) => {
+      const tx    = db.transaction(REG_STORE, 'readonly');
+      const store = tx.objectStore(REG_STORE);
+      const req   = store.get(registrationId);
+
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror   = () => reject(req.error);
+    });
+  }
+
+  function saveRegistration(db, reg) {
+    return new Promise((resolve, reject) => {
+      const tx    = db.transaction(REG_STORE, 'readwrite');
+      const store = tx.objectStore(REG_STORE);
+      const req   = store.put(reg);
+      req.onsuccess = () => resolve();
+      req.onerror   = () => reject(req.error);
+    });
+  }
+
+  // ---------- Render diffs ----------
+  function renderChanges() {
+    const updates  = payload.updates || {};
+    const original = payload.original || {};
+
+    const keys = Object.keys(updates);
+    if (!keys.length) {
+      changesTable.style.display = 'none';
+      changesEmpty.hidden = false;
+      return;
+    }
+
+    changesTable.style.display = 'table';
+    changesEmpty.hidden = true;
+
+    const rows = [];
+    for (const key of keys) {
+      const beforeVal = original[key];
+      const afterVal  = updates[key];
+
+      const beforeStr = beforeVal === null || beforeVal === undefined || beforeVal === ''
+        ? '(empty)'
+        : String(beforeVal);
+      const afterStr  = afterVal === null || afterVal === undefined || afterVal === ''
+        ? '(empty)'
+        : String(afterVal);
+
+      rows.push(`
+        <tr>
+          <td class="review-field">${escapeHtml(labelFromKey(key))}</td>
+          <td class="review-old">${escapeHtml(beforeStr)}</td>
+          <td class="review-new">${escapeHtml(afterStr)}</td>
+        </tr>
+      `);
+    }
+
+    changesBody.innerHTML = rows.join('');
+  }
+
+  // ---------- Init payload ----------
+  try {
+    const raw = sessionStorage.getItem(REVIEW_KEY);
+    if (!raw) {
+      showError('Missing review data. Please go back and edit again.');
+      return;
+    }
+    payload = JSON.parse(raw);
+  } catch (err) {
+    console.error('Failed to parse review payload', err);
+    showError('Could not load review data.');
+    return;
+  }
+
+  if (subtitleEl) {
+    subtitleEl.textContent = `Registration #${registrationId}`;
+  }
+
+  renderChanges();
+
+  // Back / Cancel → return to edit screen
+  function goBackToEdit() {
+    window.location.href =
+      `/registration/${encodeURIComponent(programId)}/${encodeURIComponent(registrationId)}`;
+  }
+
+  backBtn.addEventListener('click', goBackToEdit);
+  cancelBtn.addEventListener('click', goBackToEdit);
+
+  // Reason character counter (0/500)
+  function updateCounter() {
+    const len = (reasonInput.value || '').length;
+    if (counterEl) counterEl.textContent = `${len}/500`;
+  }
+  reasonInput.addEventListener('input', updateCounter);
+  updateCounter();
+
+  // ---------- Submit: Save + validate ----------
+  reviewForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    reviewError.hidden = true;
+
+    const reason = (reasonInput.value || '').trim();
+    if (!reason) {
+      showError('Please provide a reason for these changes.');
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving…';
+
+    try {
+      const res = await fetch('/api/registration/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          programId: payload.programId,
+          referenceId: payload.referenceId,
+          updates: payload.updates || {},
+          reason: reason,
+        }),
+      });
+
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || body.ok === false) {
+        const msg = body.error || 'Failed to save changes and validate in 121.';
+        throw new Error(msg);
+      }
+
+      // Update offline cache: status → validated, plus apply updates
+      try {
+        const db = await openDb();
+        const reg = await loadRegistration(db);
+        if (reg) {
+          const updated = {
+            ...reg,
+            ...(payload.updates || {}),
+            status: 'validated',
+          };
+          await saveRegistration(db, updated);
+        }
+      } catch (err) {
+        console.warn('Failed to update IndexedDB after confirm', err);
+      }
+
+      // Flag success for the search page, then redirect there
+      sessionStorage.removeItem(REVIEW_KEY);
+      sessionStorage.setItem('checkdroid_validation_success', '1');
+      window.location.href = `/validate?program_id=${encodeURIComponent(programId)}`;
+
+    } catch (err) {
+      console.error(err);
+      showError(err.message || 'Could not complete validation.');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Save and validate';
+    }
+  });
+})();
+</script>
+
+
+{% endblock %}

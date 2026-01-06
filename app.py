@@ -374,6 +374,334 @@ def create_app():
             program_title=program_title,
             username=session.get("username", ""),
         )
+    @app.route("/registration/<int:program_id>/<int:registration_id>")
+    @login_required
+    def registration_detail(program_id, registration_id):
+        # Make sure this user actually has access to this program
+        allowed_programs = session.get("program_ids", [])
+        if program_id not in allowed_programs:
+            flash("You do not have access to this program.")
+            return redirect(url_for("index"))
+
+        return render_template(
+            "registration_detail.html",
+            program_id=program_id,
+            registration_id=registration_id,
+            username=session.get("username", ""),
+        )
+    from urllib.parse import quote
+
+    @app.route("/api/registration/update", methods=["POST"])
+    @login_required
+    def api_registration_update():
+        """
+        Update a registration in 121 and mark it as validated.
+
+        Expects JSON:
+        {
+          "programId": 3,
+          "referenceId": "uuid-or-ref",
+          "updates": {
+            "fullName": "...",
+            "phoneNumber": "...",
+            ...
+          },
+          "reason": "he changed his name"
+        }
+
+        1) PATCH /api/programs/{programId}/registrations/{referenceId}
+           body: { "data": { ...updates }, "reason": "..." }
+
+        2) PATCH /api/programs/{programId}/registrations/status
+           ?filter.referenceId=$in:<referenceId>&...&dryRun=false
+           body: { "status": "validated" }
+        """
+        payload = request.get_json(silent=True) or {}
+
+        program_id   = payload.get("programId")
+        reference_id = payload.get("referenceId")
+        updates      = payload.get("updates") or {}
+        reason       = (payload.get("reason") or "").strip()
+
+        # ---------- basic validation ----------
+        if not program_id or not reference_id:
+            return jsonify({
+                "ok": False,
+                "error": "Missing programId or referenceId in request body."
+            }), 400
+
+        try:
+            program_id_int = int(program_id)
+        except ValueError:
+            return jsonify({
+                "ok": False,
+                "error": "programId must be an integer."
+            }), 400
+
+        # Only allow programs in the user’s session
+        allowed_programs = session.get("program_ids", [])
+        if program_id_int not in allowed_programs:
+            return jsonify({
+                "ok": False,
+                "error": "You are not allowed to update this program."
+            }), 403
+
+        cfg       = load_config()
+        base_url  = cfg.get("url121", "").rstrip("/")
+        verify_tls = cfg.get("VERIFY_TLS", True)
+        token     = session.get("token121")
+
+        if not base_url or not token:
+            return jsonify({
+                "ok": False,
+                "error": "121 configuration or session token missing."
+            }), 500
+
+        # ---------- build 121 registration URL ----------
+        ref_encoded = quote(str(reference_id), safe="")
+        reg_url = f"{base_url}/api/programs/{program_id_int}/registrations/{ref_encoded}"
+
+        # Only send the fields we actually want to change
+        data_updates = {}
+        for k, v in updates.items():
+            if v is None:
+                continue
+            data_updates[k] = v
+
+        # It is valid to have *no* changes and just validate with a reason,
+        # so we do NOT force data_updates to be non-empty.
+        patch_body = {"data": data_updates}
+        if reason:
+            patch_body["reason"] = reason
+
+        # ---------- 1) PATCH registration data + reason ----------
+        try:
+            res1 = requests.patch(
+                reg_url,
+                json=patch_body,
+                cookies={"access_token_general": token},
+                timeout=20,
+                verify=verify_tls,
+            )
+        except Exception as e:
+            print("Error calling 121 update:", repr(e))
+            return jsonify({
+                "ok": False,
+                "error": "Failed to reach 121 API. Check url121 / network.",
+            }), 502
+
+        # Debug logging
+        try:
+            resp_body1 = (
+                res1.json()
+                if "application/json" in (res1.headers.get("content-type") or "")
+                else res1.text
+            )
+        except Exception:
+            resp_body1 = res1.text
+        print("121 update status:", res1.status_code)
+        print("121 update response:", resp_body1)
+
+        if res1.status_code not in (200, 204):
+            return jsonify({
+                "ok": False,
+                "error": f"Failed to update registration in 121 (status {res1.status_code})",
+                "details": resp_body1,
+            }), 502
+
+        # ---------- 2) Mark status = validated via status endpoint ----------
+        status_url = f"{base_url}/api/programs/{program_id_int}/registrations/status"
+        status_params = {
+            "filter.referenceId": f"$in:{reference_id}",
+            "select": "registrationProgramId,name,status,duplicateStatus,phoneNumber,paymentCount,maxPayments,created",
+            "dryRun": "false",
+        }
+
+        try:
+            res2 = requests.patch(
+                status_url,
+                params=status_params,
+                json={"status": "validated"},
+                cookies={"access_token_general": token},
+                timeout=20,
+                verify=verify_tls,
+            )
+        except Exception as e:
+            print("Error calling 121 status update:", repr(e))
+            return jsonify({
+                "ok": False,
+                "error": "Data updated but failed to validate status in 121.",
+            }), 502
+
+        try:
+            resp_body2 = (
+                res2.json()
+                if "application/json" in (res2.headers.get("content-type") or "")
+                else res2.text
+            )
+        except Exception:
+            resp_body2 = res2.text
+        print("121 status update status:", res2.status_code)
+        print("121 status update response:", resp_body2)
+
+        if res2.status_code not in (200, 204):
+            return jsonify({
+                "ok": False,
+                "error": f"Failed to mark registration as validated in 121 (status {res2.status_code})",
+                "details": resp_body2,
+            }), 502
+
+        return jsonify({"ok": True})
+
+    @app.route("/validate/review")
+    @login_required
+    def validate_review():
+        program_id = request.args.get("program_id", type=int)
+        registration_id = request.args.get("registration_id", type=int)
+
+        if not program_id or not registration_id:
+            flash("Missing program or registration ID for review.")
+            return redirect(url_for("index"))
+
+        # Make sure user has access to this program
+        allowed_programs = session.get("program_ids", [])
+        if program_id not in allowed_programs:
+            flash("You do not have access to this program.")
+            return redirect(url_for("index"))
+
+        return render_template(
+            "validate_review.html",
+            program_id=program_id,
+            registration_id=registration_id,
+            username=session.get("username", ""),
+        )
+
+    @app.route("/api/registration/confirm", methods=["POST"])
+    @login_required
+    def api_registration_confirm():
+        """
+        Final step:
+        - Optionally update data + reason in 121
+        - Then mark registration as 'validated'
+        Expects JSON:
+        {
+          "programId": 3,
+          "referenceId": "uuid-or-ref",
+          "updates": { ... },       # may be empty
+          "reason": "text"          # required
+        }
+        """
+        payload = request.get_json(silent=True) or {}
+
+        program_id  = payload.get("programId")
+        reference_id = payload.get("referenceId")
+        updates      = payload.get("updates") or {}
+        reason       = (payload.get("reason") or "").strip()
+
+        if not program_id or not reference_id:
+            return jsonify({"ok": False, "error": "Missing programId or referenceId."}), 400
+        if not reason:
+            return jsonify({"ok": False, "error": "Reason is required."}), 400
+
+        try:
+            program_id = int(program_id)
+        except ValueError:
+            return jsonify({"ok": False, "error": "programId must be an integer."}), 400
+
+        allowed_programs = session.get("program_ids", [])
+        if program_id not in allowed_programs:
+            return jsonify({"ok": False, "error": "You are not allowed to update this program."}), 403
+
+        cfg = load_config()
+        base_url   = cfg.get("url121", "").rstrip("/")
+        verify_tls = cfg.get("VERIFY_TLS", True)
+        token      = session.get("token121")
+
+        if not base_url or not token:
+            return jsonify({"ok": False, "error": "121 configuration or session token missing."}), 500
+
+        ref_encoded = quote(str(reference_id), safe="")
+
+        # 1) Optional PATCH data + reason (only if there are field updates)
+        if updates:
+            patch_url = f"{base_url}/api/programs/{program_id}/registrations/{ref_encoded}"
+            body = {
+                "data": updates,
+                "reason": reason,
+            }
+
+            try:
+                res = requests.patch(
+                    patch_url,
+                    json=body,
+                    cookies={"access_token_general": token},
+                    timeout=20,
+                    verify=verify_tls,
+                )
+            except Exception as e:
+                print("Error calling 121 update+reason:", repr(e))
+                return jsonify({"ok": False, "error": "Failed to reach 121 API for update."}), 502
+
+            try:
+                if "application/json" in (res.headers.get("content-type") or ""):
+                    resp_body = res.json()
+                else:
+                    resp_body = res.text
+            except Exception:
+                resp_body = res.text
+
+            print("121 update+reason status:", res.status_code)
+            print("121 update+reason response:", resp_body)
+
+            if res.status_code not in (200, 204):
+                return jsonify({
+                    "ok": False,
+                    "error": f"121 API update responded with {res.status_code}",
+                    "details": resp_body,
+                }), res.status_code
+
+        # 2) Status change → validated
+        status_url = f"{base_url}/api/programs/{program_id}/registrations/status"
+        status_params = {
+            "filter.referenceId": f"$in:{reference_id}",
+            "select": "registrationProgramId,name,status,duplicateStatus,phoneNumber,paymentCount,maxPayments,created",
+            "dryRun": "false",
+        }
+        status_body = {"status": "validated"}
+
+        try:
+            res2 = requests.patch(
+                status_url,
+                params=status_params,
+                json=status_body,
+                cookies={"access_token_general": token},
+                timeout=20,
+                verify=verify_tls,
+            )
+        except Exception as e:
+            print("Error calling 121 status change:", repr(e))
+            return jsonify({"ok": False, "error": "Failed to reach 121 API for status update."}), 502
+
+        try:
+            if "application/json" in (res2.headers.get("content-type") or ""):
+                resp2_body = res2.json()
+            else:
+                resp2_body = res2.text
+        except Exception:
+            resp2_body = res2.text
+
+        print("121 status status:", res2.status_code)
+        print("121 status response:", resp2_body)
+
+        if res2.status_code not in (200, 202, 204):
+            return jsonify({
+                "ok": False,
+                "error": f"121 API status change responded with {res2.status_code}",
+                "details": resp2_body,
+            }), res2.status_code
+
+        return jsonify({"ok": True})
+
 
     return app
 

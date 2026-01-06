@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+{% block title %}Registration – CheckDroid{% endblock %}
+
+{% block content %}
+
+<div class="reg-detail-page"
+     data-program-id="{{ program_id }}"
+     data-registration-id="{{ registration_id }}">
+
+  <div class="reg-detail-card">
+
+    <button type="button"
+            class="reg-back-link"
+            onclick="window.location.href='{{ url_for('validate') }}?program_id={{ program_id }}'">
+      ← Back to program
+    </button>
+
+    <header class="reg-detail-header">
+      <div>
+        <div id="regTitle" class="reg-detail-title">
+          Edit: Registration #{{ registration_id }}
+        </div>
+        <span id="regStatusBadge" class="reg-status-badge reg-status-new">
+          New
+        </span>
+      </div>
+
+      <button type="button"
+              id="regEditBtn"
+              class="btn btn-secondary reg-edit-btn">
+        ✏️ Edit
+      </button>
+    </header>
+
+    <form id="regEditForm" class="reg-form" novalidate>
+      <div id="regDetailError" class="reg-error" hidden></div>
+
+      <!-- dynamic grid – fields are injected by JS -->
+      <div id="dynamicFields" class="reg-form-grid"></div>
+
+      <div class="reg-detail-actions">
+        <button type="button"
+                id="editCancelBtn"
+                class="btn btn-secondary reg-cancel-btn">
+          Cancel
+        </button>
+        <button type="submit"
+                id="editSaveBtn"
+                class="btn btn-primary reg-save-btn">
+          Next
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+(function () {
+  const DB_NAME    = 'checkdroid';
+  const DB_VERSION = 2;
+  const REG_STORE  = 'registrations';
+
+  // where we stash the review payload for the next page
+  const REVIEW_KEY = 'checkdroid_review_payload';
+
+  const root = document.querySelector('.reg-detail-page');
+  if (!root) return;
+
+  const datasetProgramId = parseInt(root.dataset.programId, 10);
+  const regId            = parseInt(root.dataset.registrationId, 10);
+
+  const titleEl      = document.getElementById('regTitle');
+  const statusBadge  = document.getElementById('regStatusBadge');
+  const editBtn      = document.getElementById('regEditBtn');
+  const form         = document.getElementById('regEditForm');
+  const fieldsWrap   = document.getElementById('dynamicFields');
+  const errorEl      = document.getElementById('regDetailError');
+  const cancelBtn    = document.getElementById('editCancelBtn');
+  const saveBtn      = document.getElementById('editSaveBtn');
+
+  let originalReg   = null;
+  let referenceId   = null;
+  let editableKeys  = [];
+  let fieldTypes    = {};
+  let mode          = 'view';
+
+  // fields we NEVER show/edit (includes referenceId & programId)
+  const NON_EDITABLE_KEYS = [
+    'id',
+    'programId',
+    'referenceId',
+    'status',
+    'created',
+    'registrationProgramId',
+    'lastMessageStatus',
+    'paymentCount',
+    'paymentCountRemaining',
+    'scope',
+    'duplicateStatus',
+    'programFspConfigurationId',
+    'programFspConfigurationName',
+    'programFspConfigurationLabel',
+  ];
+
+  // ---------- small helpers ----------
+  function safe(str) {
+    return String(str ?? '');
+  }
+
+  function escapeHtml(str) {
+    return String(str ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  function labelFromKey(key) {
+    return key
+      .replace(/_/g, ' ')
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/^./, c => c.toUpperCase());
+  }
+
+  function showError(msg) {
+    errorEl.textContent = msg;
+    errorEl.hidden = false;
+  }
+
+  // ---------- IndexedDB ----------
+  function openDb() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror   = () => reject(req.error);
+    });
+  }
+
+  function loadRegistration(db) {
+    return new Promise((resolve, reject) => {
+      const tx    = db.transaction(REG_STORE, 'readonly');
+      const store = tx.objectStore(REG_STORE);
+      const req   = store.get(regId);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror   = () => reject(req.error);
+    });
+  }
+
+  function saveRegistrationToDb(db, reg) {
+    return new Promise((resolve, reject) => {
+      const tx    = db.transaction(REG_STORE, 'readwrite');
+      const store = tx.objectStore(REG_STORE);
+      const req   = store.put(reg);
+      req.onsuccess = () => resolve();
+      req.onerror   = () => reject(req.error);
+    });
+  }
+
+  // ---------- UI ----------
+  function setMode(newMode) {
+    mode = newMode;
+    const editable = (newMode === 'edit');
+
+    for (const el of form.querySelectorAll('input, select, textarea')) {
+      el.disabled = !editable;
+    }
+
+    if (editable) {
+      root.classList.add('editing');
+      errorEl.hidden = true;
+    } else {
+      root.classList.remove('editing');
+    }
+  }
+
+  function buildDynamicFields(reg) {
+    fieldsWrap.innerHTML = '';
+    editableKeys = [];
+    fieldTypes   = {};
+
+    Object.keys(reg).forEach(key => {
+      if (NON_EDITABLE_KEYS.includes(key)) return;
+
+      const val = reg[key];
+      if (val !== null && typeof val === 'object') return; // skip nested objects/arrays
+
+      editableKeys.push(key);
+      fieldTypes[key] = typeof val;
+    });
+
+    editableKeys.sort(); // stable order
+
+    for (const key of editableKeys) {
+      const val   = reg[key];
+      const label = labelFromKey(key);
+      const id    = `field-${key}`;
+
+      const fieldDiv = document.createElement('div');
+      fieldDiv.className = 'reg-form-field';
+      fieldDiv.innerHTML = `
+        <label for="${id}">${escapeHtml(label)}</label>
+        <input
+          id="${id}"
+          name="${key}"
+          type="text"
+          value="${escapeHtml(val)}"
+        >
+      `;
+      fieldsWrap.appendChild(fieldDiv);
+    }
+  }
+
+  function fillForm(reg) {
+    referenceId = reg.referenceId;  // used later for PATCH path, not shown
+
+    titleEl.textContent = `Edit: Registration #${reg.id}`;
+
+    const status = String(reg.status || 'new').toLowerCase();
+    statusBadge.textContent = status === 'validated' ? 'Validated' : 'New';
+    statusBadge.className =
+      'reg-status-badge ' +
+      (status === 'validated' ? 'reg-status-validated' : 'reg-status-new');
+
+    buildDynamicFields(reg);
+  }
+
+  // ---------- submit helpers ----------
+  function collectUpdates() {
+    const updates = {};
+
+    for (const key of editableKeys) {
+      const input = form.elements[key];
+      if (!input) continue;
+
+      const raw  = input.value;
+      const type = fieldTypes[key];
+      let newVal;
+
+      if (type === 'number') {
+        newVal = raw === '' ? null : Number(raw);
+        if (Number.isNaN(newVal)) newVal = null;
+      } else {
+        newVal = raw;
+      }
+
+      const oldVal = originalReg[key];
+      if (newVal !== oldVal) {
+        updates[key] = newVal;
+      }
+    }
+    return updates;
+  }
+
+  // ---------- init ----------
+  openDb()
+    .then(loadRegistration)
+    .then(reg => {
+      if (!reg) {
+        showError('Could not find this registration in the offline cache.');
+        return;
+      }
+
+      originalReg = reg;
+      fillForm(reg);
+      setMode('view');
+
+      // Buttons
+      editBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        setMode('edit');
+      });
+
+      cancelBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (originalReg) fillForm(originalReg);
+        setMode('view');
+      });
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        errorEl.hidden = true;
+
+        if (!referenceId) {
+          showError('Missing reference ID for this registration.');
+          return;
+        }
+
+        const programId = originalReg.programId || datasetProgramId;
+        if (!programId) {
+          showError('Missing programId for this registration.');
+          return;
+        }
+
+        const updates = collectUpdates();
+
+        // Build payload for review page
+        const reviewPayload = {
+          programId: programId,
+          registrationId: originalReg.id,
+          referenceId: referenceId,
+          updates: updates,       // may be empty
+          original: originalReg,  // full original object to diff against
+        };
+
+        try {
+          sessionStorage.setItem(REVIEW_KEY, JSON.stringify(reviewPayload));
+        } catch (err) {
+          console.error('Failed to store review payload in sessionStorage', err);
+          showError('Unable to prepare review. Please try again.');
+          return;
+        }
+
+        // Go to review/confirmation page (reason + validate)
+        const url = `/validate/review?program_id=${encodeURIComponent(programId)}&registration_id=${encodeURIComponent(originalReg.id)}`;
+        window.location.href = url;
+      });
+    })
+    .catch(err => {
+      console.error('Failed to load registration detail', err);
+      showError('Could not load this registration.');
+    });
+})();
+</script>
+
+{% endblock %}
