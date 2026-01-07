@@ -100,6 +100,11 @@
     'programFspConfigurationId',
     'programFspConfigurationName',
     'programFspConfigurationLabel',
+    'fspName',
+    'paymentAmountMultiplier',
+    'maxPayments',
+    'personAffectedSequence',
+    'inclusionScore'
   ];
 
   // ---------- small helpers ----------
@@ -228,6 +233,7 @@
   }
 
   // ---------- submit helpers ----------
+  // ---------- submit helpers ----------
   function collectUpdates() {
     const updates = {};
 
@@ -237,20 +243,39 @@
 
       const raw  = input.value;
       const type = fieldTypes[key];
+
       let newVal;
 
       if (type === 'number') {
-        newVal = raw === '' ? null : Number(raw);
+        // Numbers: treat blank as "no value"
+        const trimmed = (raw || '').trim();
+        newVal = trimmed === '' ? null : Number(trimmed);
         if (Number.isNaN(newVal)) newVal = null;
       } else {
-        newVal = raw;
+        // Strings (and everything else): trim; blank => null
+        const trimmed = (raw || '').trim();
+        newVal = trimmed === '' ? null : trimmed;
       }
 
       const oldVal = originalReg[key];
-      if (newVal !== oldVal) {
+
+      // Normalise for comparison so null / undefined / "" all count as "empty"
+      const normOld =
+        oldVal === null || oldVal === undefined
+          ? ''
+          : String(oldVal).trim();
+
+      const normNew =
+        newVal === null || newVal === undefined
+          ? ''
+          : String(newVal).trim();
+
+      // Only record an update if the *meaningful* value changed
+      if (normNew !== normOld) {
         updates[key] = newVal;
       }
     }
+
     return updates;
   }
 

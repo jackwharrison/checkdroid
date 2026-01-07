@@ -17,7 +17,8 @@
 
     <header class="review-header">
       <div>
-        <h1 class="review-title">Review changes</h1>
+        <!-- give the title an ID so we can change it when there are no changes -->
+        <h1 id="reviewTitle" class="review-title">Review changes</h1>
         <div id="reviewSubtitle"
              class="review-subtitle">
           Registration #{{ registration_id }}
@@ -26,8 +27,9 @@
     </header>
 
     <section class="review-changes">
-      <h2 class="review-section-title">Changes to this registration</h2>
-      <p class="review-helper">Please review edited fields:</p>
+      <!-- also give these IDs so we can tweak copy dynamically -->
+      <h2 id="reviewSectionTitle" class="review-section-title">Changes to this registration</h2>
+      <p id="reviewHelper" class="review-helper">Please review edited fields:</p>
       <div id="changesEmpty" class="muted small" hidden>
         No field changes – you are only providing a reason.
       </div>
@@ -49,13 +51,14 @@
     <form id="reviewForm" class="review-form" novalidate>
       <div id="reviewError" class="reg-error" hidden></div>
 
-      <div class="reg-form-field">
+      <!-- WRAPPER NOW HAS AN ID SO WE CAN HIDE IT WHEN NO CHANGES -->
+      <div id="reasonFieldWrap" class="reg-form-field">
         <label for="reason">Provide a reason for these changes*</label>
         <textarea id="reason"
                   name="reason"
                   maxlength="500"
-                  rows="3"
-                  required></textarea>
+                  rows="3"></textarea>
+        <div id="reasonCounter" class="muted small"></div>
       </div>
 
       <div class="review-actions">
@@ -99,14 +102,20 @@
   const submitBtn    = document.getElementById('reviewSubmitBtn');
   const subtitleEl   = document.getElementById('reviewSubtitle');
   const counterEl    = document.getElementById('reasonCounter');
+  const reasonFieldWrap = document.getElementById('reasonFieldWrap');
+
+  // NEW: title + section elements so we can change copy for no-changes case
+  const pageTitleEl       = document.getElementById('reviewTitle');
+  const sectionTitleEl    = document.getElementById('reviewSectionTitle');
+  const sectionHelperEl   = document.getElementById('reviewHelper');
 
   let payload = null;
+  let hasFieldChanges = false;
 
   function escapeHtml(str) {
     return String(str ?? '')
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#039;');
   }
@@ -161,14 +170,57 @@
     const original = payload.original || {};
 
     const keys = Object.keys(updates);
-    if (!keys.length) {
+    hasFieldChanges = keys.length > 0;
+
+    const reasonLabel = document.querySelector('label[for="reason"]');
+
+    if (!hasFieldChanges) {
+      // No field changes: adjust copy so page reads as a simple validation step
+      if (pageTitleEl) {
+        pageTitleEl.textContent = 'Validate registration';
+      }
+      if (sectionTitleEl) {
+        sectionTitleEl.textContent = 'Ready to validate';
+      }
+      if (sectionHelperEl) {
+        sectionHelperEl.textContent = 'No fields were changed. You can validate this registration.';
+      }
+
+      // Hide table + diff rows
       changesTable.style.display = 'none';
-      changesEmpty.hidden = false;
+      // You can either show or hide this helper; here we keep a simple note:
+      changesEmpty.hidden = true;
+
+      // Hide reason box entirely
+      if (reasonFieldWrap) {
+        reasonFieldWrap.style.display = 'none';
+      }
+      if (reasonLabel) {
+        reasonLabel.textContent = 'Provide a reason for these changes (optional)';
+      }
       return;
+    }
+
+    // There ARE changes: keep original "review" copy
+    if (pageTitleEl) {
+      pageTitleEl.textContent = 'Review changes';
+    }
+    if (sectionTitleEl) {
+      sectionTitleEl.textContent = 'Changes to this registration';
+    }
+    if (sectionHelperEl) {
+      sectionHelperEl.textContent = 'Please review edited fields:';
     }
 
     changesTable.style.display = 'table';
     changesEmpty.hidden = true;
+
+    if (reasonFieldWrap) {
+      reasonFieldWrap.style.display = '';
+    }
+    if (reasonLabel) {
+      reasonLabel.textContent = 'Provide a reason for these changes*';
+    }
 
     const rows = [];
     for (const key of keys) {
@@ -225,6 +277,7 @@
 
   // Reason character counter (0/500)
   function updateCounter() {
+    if (!hasFieldChanges) return;  // no reason box, no counter needed
     const len = (reasonInput.value || '').length;
     if (counterEl) counterEl.textContent = `${len}/500`;
   }
@@ -236,8 +289,10 @@
     e.preventDefault();
     reviewError.hidden = true;
 
-    const reason = (reasonInput.value || '').trim();
-    if (!reason) {
+    // Only require a reason if there are actual field changes
+    const reason = hasFieldChanges ? (reasonInput.value || '').trim() : '';
+
+    if (hasFieldChanges && !reason) {
       showError('Please provide a reason for these changes.');
       return;
     }
@@ -263,15 +318,18 @@
         throw new Error(msg);
       }
 
-      // Update offline cache: status → validated, plus apply updates
+      // ---- Update offline cache: apply updates + mark validated today ----
       try {
         const db = await openDb();
         const reg = await loadRegistration(db);
         if (reg) {
+          const nowIso = new Date().toISOString();
           const updated = {
             ...reg,
             ...(payload.updates || {}),
             status: 'validated',
+            validatedAt: nowIso,
+            validatedOnDevice: true,
           };
           await saveRegistration(db, updated);
         }
@@ -279,7 +337,7 @@
         console.warn('Failed to update IndexedDB after confirm', err);
       }
 
-      // Flag success for the search page, then redirect there
+      // Flag success for next page & redirect
       sessionStorage.removeItem(REVIEW_KEY);
       sessionStorage.setItem('checkdroid_validation_success', '1');
       window.location.href = `/validate?program_id=${encodeURIComponent(programId)}`;
@@ -294,6 +352,5 @@
   });
 })();
 </script>
-
 
 {% endblock %}

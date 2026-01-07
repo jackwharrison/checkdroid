@@ -67,24 +67,26 @@
     }
   }
 
-  const DB_NAME = 'checkdroid';
-  const DB_VERSION = 2;         // must match your index page
-  const REG_STORE = 'registrations';
-  const DEC_STORE = 'decisions';
+  const DB_NAME    = 'checkdroid';
+  const DB_VERSION = 2;
+  const REG_STORE  = 'registrations';
+  const DEC_STORE  = 'decisions';
 
   const pageRoot = document.querySelector('.validate-page');
+  if (!pageRoot) return;
+
   const programId = parseInt(pageRoot.dataset.programId, 10);
 
-  const listEl = document.getElementById('registrationList');
-  const searchInput = document.getElementById('searchInput');
-  const statSynced = document.getElementById('statSyncedCount');
+  const listEl             = document.getElementById('registrationList');
+  const searchInput        = document.getElementById('searchInput');
+  const statSynced         = document.getElementById('statSyncedCount');
   const statValidatedToday = document.getElementById('statValidatedToday');
-  const syncStatusText = document.getElementById('syncStatusText');
+  const syncStatusText     = document.getElementById('syncStatusText');
 
   let allRegistrations = [];
-  let decisionsById = new Map();
+  let decisionsById    = new Map();
 
-  // ---------- small helpers ----------
+  // ---------- helpers ----------
   function safeEscape(str) {
     return String(str ?? '')
       .replace(/&/g, '&amp;')
@@ -98,7 +100,7 @@
     return decisionsById.get(regId) || null;
   }
 
-  // ---------- IndexedDB helpers ----------
+  // ---------- IndexedDB ----------
   function openDb() {
     return new Promise((resolve, reject) => {
       const req = indexedDB.open(DB_NAME, DB_VERSION);
@@ -106,13 +108,11 @@
       req.onupgradeneeded = (event) => {
         const db = event.target.result;
 
-        // registrations store
         if (!db.objectStoreNames.contains(REG_STORE)) {
           const regStore = db.createObjectStore(REG_STORE, { keyPath: 'id' });
           regStore.createIndex('by_program', 'programId', { unique: false });
         }
 
-        // decisions store
         if (!db.objectStoreNames.contains(DEC_STORE)) {
           const decStore = db.createObjectStore(DEC_STORE, { keyPath: 'id' });
           decStore.createIndex('by_program', 'programId', { unique: false });
@@ -120,19 +120,19 @@
       };
 
       req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
+      req.onerror   = () => reject(req.error);
     });
   }
 
   function loadRegistrations(db) {
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(REG_STORE, 'readonly');
+      const tx    = db.transaction(REG_STORE, 'readonly');
       const store = tx.objectStore(REG_STORE);
       const index = store.index('by_program');
-      const req = index.getAll(IDBKeyRange.only(programId));
+      const req   = index.getAll(IDBKeyRange.only(programId));
 
       req.onsuccess = () => resolve(req.result || []);
-      req.onerror = () => reject(req.error);
+      req.onerror   = () => reject(req.error);
     });
   }
 
@@ -141,19 +141,32 @@
       return Promise.resolve([]);
     }
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(DEC_STORE, 'readonly');
+      const tx    = db.transaction(DEC_STORE, 'readonly');
       const store = tx.objectStore(DEC_STORE);
-      const index = store.index('by_program');
-      const req = index.getAll(IDBKeyRange.only(programId));
 
-      req.onsuccess = () => resolve(req.result || []);
+      let req;
+      if (store.indexNames.contains('by_program')) {
+        const index = store.index('by_program');
+        req = index.getAll(IDBKeyRange.only(programId));
+      } else {
+        req = store.getAll();
+      }
+
+      req.onsuccess = () => {
+        const all = req.result || [];
+        if (store.indexNames.contains('by_program')) {
+          resolve(all);
+        } else {
+          resolve(all.filter(d => d.programId === programId));
+        }
+      };
       req.onerror = () => reject(req.error);
     });
   }
 
   // ---------- Rendering ----------
   function renderList(filter) {
-    const q = (filter || '').trim().toLowerCase();
+    const q     = (filter || '').trim().toLowerCase();
     const today = new Date().toISOString().slice(0, 10);
 
     let validatedTodayCount = 0;
@@ -161,12 +174,43 @@
 
     for (const reg of allRegistrations) {
       const dec = decisionFor(reg.id);
-      const status = dec ? dec.status : 'new';
 
-      if (dec && dec.status === 'validated' && dec.date && dec.date.startsWith(today)) {
+      // Base status: 121 status, overridden by any local decision
+      let status = 'new';
+      if (reg.status) {
+        status = String(reg.status).toLowerCase();
+      }
+      if (dec && dec.status) {
+        status = String(dec.status).toLowerCase();
+      }
+
+      // Determine "validated on this device today"
+      let validatedToday = false;
+
+      // 1) If we have a decision with today's date
+      if (
+        dec &&
+        String(dec.status).toLowerCase() === 'validated' &&
+        dec.date &&
+        String(dec.date).startsWith(today)
+      ) {
+        validatedToday = true;
+      }
+      // 2) Fallback: the registration itself carries validatedAt/validatedOnDevice
+      else if (
+        String(status).toLowerCase() === 'validated' &&
+        reg.validatedOnDevice &&
+        reg.validatedAt &&
+        String(reg.validatedAt).startsWith(today)
+      ) {
+        validatedToday = true;
+      }
+
+      if (validatedToday) {
         validatedTodayCount += 1;
       }
 
+      // Text search
       if (q) {
         const haystack = [
           reg.fullName || reg.name || '',
@@ -177,12 +221,12 @@
         if (!haystack.includes(q)) continue;
       }
 
-      const name = reg.fullName || reg.name || '(no name)';
-      const phone = reg.phoneNumber || '';
-      const ref = reg.referenceId || '';
+      const name     = reg.fullName || reg.name || '(no name)';
+      const phone    = reg.phoneNumber || '';
+      const ref      = reg.referenceId || '';
       const regTitle = `Registration #${reg.id}`;
 
-      const badgeText = status === 'validated' ? 'Validated' : 'New';
+      const badgeText  = status === 'validated' ? 'Validated' : 'New';
       const badgeClass = status === 'validated'
         ? 'reg-badge reg-badge-validated'
         : 'reg-badge reg-badge-new';
@@ -197,7 +241,7 @@
             <div class="reg-body">
               <div><strong>Name:</strong> ${safeEscape(name)}</div>
               ${phone ? `<div><strong>Phone:</strong> ${safeEscape(phone)}</div>` : ''}
-              ${ref ? `<div><strong>ID number:</strong> ${safeEscape(ref)}</div>` : ''}
+              ${ref   ? `<div><strong>ID number:</strong> ${safeEscape(ref)}</div>` : ''}
             </div>
           </div>
         </article>
@@ -208,7 +252,7 @@
       <div class="muted small">No registrations found for this program.</div>
     `;
 
-    // click → detail
+    // click → detail page
     listEl.querySelectorAll('.reg-card').forEach(card => {
       const regId = Number(card.dataset.id);
       card.addEventListener('click', () => {
@@ -217,7 +261,8 @@
       });
     });
 
-    statSynced.textContent = allRegistrations.length;
+    // update counters
+    statSynced.textContent         = allRegistrations.length;
     statValidatedToday.textContent = validatedTodayCount;
   }
 
@@ -230,7 +275,7 @@
       ]);
 
       allRegistrations = regs || [];
-      decisionsById = new Map();
+      decisionsById    = new Map();
       for (const d of decs) {
         decisionsById.set(d.id, d);
       }
@@ -240,11 +285,11 @@
     })
     .catch((err) => {
       console.error('Failed to load registrations from IndexedDB', err);
-      listEl.innerHTML = '<div class="muted small">Could not load offline data.</div>';
+      listEl.innerHTML          = '<div class="muted small">Could not load offline data.</div>';
       syncStatusText.textContent = 'Offline cache unavailable';
     });
 
-  // Search handler
+  // live search
   searchInput.addEventListener('input', (e) => {
     renderList(e.target.value || '');
   });
