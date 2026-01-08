@@ -9,11 +9,11 @@
 
   <div class="reg-detail-card">
 
-    <button type="button"
-            class="reg-back-link"
-            onclick="window.location.href='{{ url_for('validate') }}?program_id={{ program_id }}'">
-      ← Back to program
-    </button>
+        <button type="button"
+                class="reg-back-link"
+                id="backToProgramBtn">
+        ← Back to program
+        </button>
 
     <header class="reg-detail-header">
       <div>
@@ -66,8 +66,34 @@
   const root = document.querySelector('.reg-detail-page');
   if (!root) return;
 
-  const datasetProgramId = parseInt(root.dataset.programId, 10);
-  const regId            = parseInt(root.dataset.registrationId, 10);
+function parseIdsFromPath() {
+  // expects /registration/<programId>/<registrationId>
+  const parts = window.location.pathname.split('/').filter(Boolean);
+  const i = parts.indexOf('registration');
+  if (i === -1 || parts.length < i + 3) return { programId: null, registrationId: null };
+
+  return {
+    programId: parseInt(parts[i + 1], 10) || null,
+    registrationId: parseInt(parts[i + 2], 10) || null,
+  };
+}
+
+const fromUrl = parseIdsFromPath();
+
+const datasetProgramId =
+  parseInt(root.dataset.programId || '', 10) || fromUrl.programId;
+
+const regId =
+  parseInt(root.dataset.registrationId || '', 10) || fromUrl.registrationId;
+
+if (!datasetProgramId || !regId) {
+  showError('Missing program/registration ID in the URL. Please sync online first, then retry offline.');
+  return;
+}
+
+// keep dataset consistent for any downstream code
+root.dataset.programId = String(datasetProgramId);
+root.dataset.registrationId = String(regId);
 
   const titleEl      = document.getElementById('regTitle');
   const statusBadge  = document.getElementById('regStatusBadge');
@@ -77,6 +103,12 @@
   const errorEl      = document.getElementById('regDetailError');
   const cancelBtn    = document.getElementById('editCancelBtn');
   const saveBtn      = document.getElementById('editSaveBtn');
+const backBtn = document.getElementById('backToProgramBtn');
+if (backBtn) {
+  backBtn.addEventListener('click', () => {
+    window.location.href = `/validate?program_id=${encodeURIComponent(datasetProgramId)}`;
+  });
+}
 
   let originalReg   = null;
   let referenceId   = null;

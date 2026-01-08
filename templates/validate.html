@@ -51,7 +51,6 @@
     <!-- cards injected by JS -->
   </section>
 </div>
-
 <script>
 (function () {
   // --- one-shot success banner after validation ---
@@ -75,7 +74,59 @@
   const pageRoot = document.querySelector('.validate-page');
   if (!pageRoot) return;
 
-  const programId = parseInt(pageRoot.dataset.programId, 10);
+  // ---------- NEW: programId + title fallbacks for offline shell ----------
+  function getProgramIdFromUrlOrDom(rootEl) {
+    // 1) dataset (online render)
+    const ds = parseInt(rootEl?.dataset?.programId || "", 10);
+    if (ds) return ds;
+
+    // 2) query string (?program_id=123) (offline shell + navigation)
+    const qs = parseInt(new URLSearchParams(window.location.search).get("program_id") || "", 10);
+    if (qs) return qs;
+
+    return null;
+  }
+
+  function getCachedProgramTitle(programId) {
+    try {
+      const raw = localStorage.getItem("checkdroid_programs");
+      if (!raw) return null;
+      const arr = JSON.parse(raw);
+      const hit = arr.find(p => Number(p.id) === Number(programId));
+      return hit?.title || null;
+    } catch {
+      return null;
+    }
+  }
+
+  const programId = getProgramIdFromUrlOrDom(pageRoot);
+
+  if (!programId) {
+    const listEl = document.getElementById('registrationList');
+    const syncStatusText = document.getElementById('syncStatusText');
+    if (listEl) listEl.innerHTML = '<div class="muted small">Missing program ID. Open this program once online, then retry offline.</div>';
+    if (syncStatusText) syncStatusText.textContent = 'Program ID missing';
+    return;
+  }
+
+  // keep dataset consistent for the rest of this script
+  pageRoot.dataset.programId = String(programId);
+
+  // Set program title in header if Jinja rendered it empty (offline shell)
+  const cachedTitle = getCachedProgramTitle(programId);
+  const titleEl = document.querySelector(".validate-title");
+  if (titleEl) {
+    const current = (titleEl.textContent || "").trim();
+    if (!current) {
+      titleEl.textContent = cachedTitle || `Program ${programId}`;
+    }
+  }
+  if (cachedTitle) {
+    document.title = `${cachedTitle} – CheckDroid`;
+  } else if (!document.title || document.title.trim() === "CheckDroid") {
+    document.title = `Program ${programId} – CheckDroid`;
+  }
+  // ----------------------------------------------------------------------
 
   const listEl             = document.getElementById('registrationList');
   const searchInput        = document.getElementById('searchInput');
@@ -285,7 +336,7 @@
     })
     .catch((err) => {
       console.error('Failed to load registrations from IndexedDB', err);
-      listEl.innerHTML          = '<div class="muted small">Could not load offline data.</div>';
+      listEl.innerHTML           = '<div class="muted small">Could not load offline data.</div>';
       syncStatusText.textContent = 'Offline cache unavailable';
     });
 
@@ -295,5 +346,6 @@
   });
 })();
 </script>
+
 
 {% endblock %}

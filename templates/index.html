@@ -71,19 +71,30 @@
         `;
       }
 
-      async function loadPrograms() {
+        async function loadPrograms() {
         const res = await fetch("/api/programs");
         const data = await res.json();
         const programs = data.programs || [];
         const container = document.getElementById("programCards");
 
+        // ADD THIS BLOCK:
+        try {
+            const slim = programs.map(p => ({
+            id: p.id,
+            title: p.title || `Program ${p.id}`
+            }));
+            localStorage.setItem("checkdroid_programs", JSON.stringify(slim));
+        } catch (e) {
+            console.warn("Could not persist programs for offline title lookup", e);
+        }
+
         if (!programs.length) {
-          container.innerHTML = `
+            container.innerHTML = `
             <div class="muted small">
-              No programs available for this account.
+                No programs available for this account.
             </div>
-          `;
-          return;
+            `;
+            return;
         }
 
         // Inject cards
@@ -91,14 +102,14 @@
 
         // After cards exist, trigger sync for each
         if (typeof window.syncProgramCard === "function") {
-          const cards = container.querySelectorAll(".card-program[data-program-id]");
-          cards.forEach((card) => {
+            const cards = container.querySelectorAll(".card-program[data-program-id]");
+            cards.forEach((card) => {
             const pid = parseInt(card.dataset.programId, 10);
             if (!pid) return;
             window.syncProgramCard(card, pid);
-          });
+            });
         }
-      }
+        }
 
       loadPrograms().catch(err => console.error("Failed to load programs", err));
     })();

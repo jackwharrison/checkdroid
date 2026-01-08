@@ -88,8 +88,32 @@
   const root = document.querySelector('.review-page');
   if (!root) return;
 
-  const programId      = parseInt(root.dataset.programId, 10);
-  const registrationId = parseInt(root.dataset.registrationId, 10);
+function parseIdsFromQueryOrDom(rootEl) {
+  const dsPid = parseInt(rootEl?.dataset?.programId || '', 10) || null;
+  const dsRid = parseInt(rootEl?.dataset?.registrationId || '', 10) || null;
+
+  const qs = new URLSearchParams(window.location.search);
+  const qsPid = parseInt(qs.get('program_id') || '', 10) || null;
+  const qsRid = parseInt(qs.get('registration_id') || '', 10) || null;
+
+  return {
+    programId: dsPid || qsPid,
+    registrationId: dsRid || qsRid,
+  };
+}
+
+const ids = parseIdsFromQueryOrDom(root);
+const programId = ids.programId;
+const registrationId = ids.registrationId;
+
+if (!programId || !registrationId) {
+  showError('Missing program/registration ID. Please go back and open the review step again.');
+  return;
+}
+
+// Keep dataset consistent for downstream code
+root.dataset.programId = String(programId);
+root.dataset.registrationId = String(registrationId);
 
   const backBtn      = document.getElementById('reviewBackBtn');
   const changesTable = document.getElementById('changesTable');
@@ -305,7 +329,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          programId: payload.programId,
+          programId: programId,
           referenceId: payload.referenceId,
           updates: payload.updates || {},
           reason: reason,

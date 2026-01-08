@@ -130,5 +130,27 @@
     });
 
   </script>
+<script>
+  if ("serviceWorker" in navigator) {
+    const disableSw = new URLSearchParams(location.search).get("nosw") === "1";
+    if (!disableSw) {
+      window.addEventListener("load", async () => {
+        try {
+          // If a SW already controls the page, do nothing
+          if (navigator.serviceWorker.controller) return;
+
+          // If an existing registration exists, do nothing
+          const existing = await navigator.serviceWorker.getRegistration("/");
+          if (existing) return;
+
+          await navigator.serviceWorker.register("/sw.js");
+        } catch (err) {
+          console.warn("SW registration failed", err);
+        }
+      });
+    }
+  }
+</script>
+
 </body>
 </html>

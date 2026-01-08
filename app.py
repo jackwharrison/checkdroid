@@ -701,7 +701,27 @@ def create_app():
             }), res2.status_code
 
         return jsonify({"ok": True})
+    @app.route("/offline/index")
+    def offline_index():
+        return render_template("index.html")
 
+    @app.route("/offline/validate")
+    def offline_validate():
+        return render_template("validate.html", program_id=0, program_title="")
+
+    @app.route("/offline/registration")
+    def offline_registration():
+        return render_template("registration_detail.html", program_id=0, registration_id=0)
+
+    @app.route("/offline/review")
+    def offline_review():
+        return render_template("validate_review.html", program_id=0, registration_id=0)
+
+    from flask import send_from_directory
+
+    @app.route("/sw.js")
+    def sw():
+        return send_from_directory("static", "sw.js")
 
     return app
 
