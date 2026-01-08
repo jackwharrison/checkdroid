@@ -53,7 +53,7 @@
 </div>
 <script>
 (function () {
-  // --- one-shot success banner after validation ---
+  // --- one-shot success / queued banner after validation ---
   const flag = sessionStorage.getItem('checkdroid_validation_success');
   if (flag) {
     sessionStorage.removeItem('checkdroid_validation_success');
@@ -61,26 +61,28 @@
     if (root) {
       const banner = document.createElement('div');
       banner.className = 'validate-success-banner';
-      banner.textContent = 'Registration successfully validated.';
+      banner.textContent =
+        (flag === 'queued')
+          ? 'Saved offline. This validation will sync when you are back online.'
+          : 'Registration successfully validated.';
       root.prepend(banner);
     }
   }
 
-  const DB_NAME    = 'checkdroid';
-  const DB_VERSION = 2;
-  const REG_STORE  = 'registrations';
-  const DEC_STORE  = 'decisions';
+  const DB_NAME      = 'checkdroid';
+  const DB_VERSION   = 3; // includes outbox
+  const REG_STORE    = 'registrations';
+  const DEC_STORE    = 'decisions';
+  const OUTBOX_STORE = 'outbox';
 
   const pageRoot = document.querySelector('.validate-page');
   if (!pageRoot) return;
 
-  // ---------- NEW: programId + title fallbacks for offline shell ----------
+  // ---------- programId + title fallbacks for offline shell ----------
   function getProgramIdFromUrlOrDom(rootEl) {
-    // 1) dataset (online render)
     const ds = parseInt(rootEl?.dataset?.programId || "", 10);
     if (ds) return ds;
 
-    // 2) query string (?program_id=123) (offline shell + navigation)
     const qs = parseInt(new URLSearchParams(window.location.search).get("program_id") || "", 10);
     if (qs) return qs;
 
@@ -126,7 +128,7 @@
   } else if (!document.title || document.title.trim() === "CheckDroid") {
     document.title = `Program ${programId} – CheckDroid`;
   }
-  // ----------------------------------------------------------------------
+  // ------------------------------------------------------------------
 
   const listEl             = document.getElementById('registrationList');
   const searchInput        = document.getElementById('searchInput');
@@ -167,6 +169,14 @@
         if (!db.objectStoreNames.contains(DEC_STORE)) {
           const decStore = db.createObjectStore(DEC_STORE, { keyPath: 'id' });
           decStore.createIndex('by_program', 'programId', { unique: false });
+        }
+
+        if (!db.objectStoreNames.contains(OUTBOX_STORE)) {
+          const out = db.createObjectStore(OUTBOX_STORE, { keyPath: 'id' }); // uuid
+          out.createIndex('by_status', 'status', { unique: false });
+          out.createIndex('by_created', 'createdAt', { unique: false });
+          out.createIndex('by_reg', 'registrationId', { unique: false });
+          out.createIndex('by_program', 'programId', { unique: false });
         }
       };
 
@@ -215,6 +225,172 @@
     });
   }
 
+  // ---------- Outbox helpers ----------
+  function uuidv4() {
+    // browser-safe UUID
+    if (crypto?.randomUUID) return crypto.randomUUID();
+    const a = crypto.getRandomValues(new Uint8Array(16));
+    a[6] = (a[6] & 0x0f) | 0x40;
+    a[8] = (a[8] & 0x3f) | 0x80;
+    const hex = [...a].map(b => b.toString(16).padStart(2, '0')).join('');
+    return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+  }
+
+  function getOutboxByProgram(db, pid) {
+    if (!db.objectStoreNames.contains(OUTBOX_STORE)) return Promise.resolve([]);
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(OUTBOX_STORE, 'readonly');
+      const store = tx.objectStore(OUTBOX_STORE);
+      const idx = store.index('by_program');
+      const req = idx.getAll(IDBKeyRange.only(pid));
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  function putOutbox(db, item) {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(OUTBOX_STORE, 'readwrite');
+      const store = tx.objectStore(OUTBOX_STORE);
+      const req = store.put(item);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  function countOutbox(items) {
+    return {
+      pending: items.filter(x => x.status === 'pending').length,
+      failed:  items.filter(x => x.status === 'failed').length,
+      sent:    items.filter(x => x.status === 'sent').length,
+    };
+  }
+
+  // Create an outbox item (use this from validate_review when offline)
+  async function queueConfirmAction(body, registrationIdGuess) {
+    const db = await openDb();
+    const item = {
+      id: uuidv4(),
+      type: 'confirm',
+      status: 'pending',
+      programId: Number(body.programId),
+      registrationId: Number(registrationIdGuess || 0),
+      createdAt: new Date().toISOString(),
+      request: {
+        url: '/api/registration/confirm',
+        method: 'POST',
+        body: body,
+      },
+      error: null,
+    };
+    await putOutbox(db, item);
+    return item;
+  }
+
+  let outboxFlushInProgress = false;
+
+  async function flushOutbox() {
+    if (!navigator.onLine) return { sent: 0, failed: 0, pending: 0, totalPending: 0, totalFailed: 0 };
+    if (outboxFlushInProgress) return { sent: 0, failed: 0, pending: 0, totalPending: 0, totalFailed: 0 };
+
+    outboxFlushInProgress = true;
+
+    try {
+      const db = await openDb();
+      const allForProgram = await getOutboxByProgram(db, programId);
+
+      const pendingItems = allForProgram
+        .filter(x => x.status === 'pending' && x.type === 'confirm')
+        .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+
+      let sentNow = 0;
+      let failedNow = 0;
+
+      for (const item of pendingItems) {
+        try {
+          const res = await fetch(item.request.url, {
+            method: item.request.method || 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(item.request.body || {}),
+          });
+
+          // auth issues likely mean session is gone or redirected
+          if (res.status === 401 || res.status === 403) {
+            const err = new Error('Session expired. Please log in again.');
+            err.permanent = true;
+            throw err;
+          }
+
+          const ct = (res.headers.get('content-type') || '').toLowerCase();
+          const isJson = ct.includes('application/json');
+          if (!isJson) {
+            const err = new Error('Unexpected response (login page returned). Please log in again.');
+            err.permanent = true;
+            throw err;
+          }
+
+          const body = await res.json().catch(() => ({}));
+          if (!res.ok || body.ok === false) {
+            const msg = body?.error || `HTTP ${res.status}`;
+            const err = new Error(msg);
+            // 4xx usually permanent; 5xx transient
+            err.permanent = (res.status >= 400 && res.status < 500);
+            throw err;
+          }
+
+          await putOutbox(db, {
+            ...item,
+            status: 'sent',
+            sentAt: new Date().toISOString(),
+            error: null,
+          });
+          sentNow += 1;
+
+        } catch (err) {
+          const permanent = !!err?.permanent;
+
+          if (permanent) {
+            await putOutbox(db, {
+              ...item,
+              status: 'failed',
+              failedAt: new Date().toISOString(),
+              error: String(err?.message || err),
+            });
+            failedNow += 1;
+          } else {
+            // transient: keep pending, retry later
+            await putOutbox(db, {
+              ...item,
+              status: 'pending',
+              lastErrorAt: new Date().toISOString(),
+              error: String(err?.message || err),
+            });
+          }
+        }
+      }
+
+      const after = await getOutboxByProgram(db, programId);
+      const counts = countOutbox(after);
+
+      return {
+        sent: sentNow,
+        failed: failedNow,
+        pending: pendingItems.length,
+        totalPending: counts.pending,
+        totalFailed: counts.failed,
+      };
+
+    } finally {
+      outboxFlushInProgress = false;
+    }
+  }
+
+  // Expose queue helper for validate_review page to call when offline
+  window.CheckDroidQueue = {
+    queueConfirmAction,
+    flushOutbox,
+  };
+
   // ---------- Rendering ----------
   function renderList(filter) {
     const q     = (filter || '').trim().toLowerCase();
@@ -228,17 +404,12 @@
 
       // Base status: 121 status, overridden by any local decision
       let status = 'new';
-      if (reg.status) {
-        status = String(reg.status).toLowerCase();
-      }
-      if (dec && dec.status) {
-        status = String(dec.status).toLowerCase();
-      }
+      if (reg.status) status = String(reg.status).toLowerCase();
+      if (dec && dec.status) status = String(dec.status).toLowerCase();
 
       // Determine "validated on this device today"
       let validatedToday = false;
 
-      // 1) If we have a decision with today's date
       if (
         dec &&
         String(dec.status).toLowerCase() === 'validated' &&
@@ -246,9 +417,7 @@
         String(dec.date).startsWith(today)
       ) {
         validatedToday = true;
-      }
-      // 2) Fallback: the registration itself carries validatedAt/validatedOnDevice
-      else if (
+      } else if (
         String(status).toLowerCase() === 'validated' &&
         reg.validatedOnDevice &&
         reg.validatedAt &&
@@ -257,9 +426,7 @@
         validatedToday = true;
       }
 
-      if (validatedToday) {
-        validatedTodayCount += 1;
-      }
+      if (validatedToday) validatedTodayCount += 1;
 
       // Text search
       if (q) {
@@ -317,35 +484,71 @@
     statValidatedToday.textContent = validatedTodayCount;
   }
 
-  // ---------- Init ----------
-  openDb()
-    .then(async (db) => {
+  async function init() {
+    try {
+      const db = await openDb();
       const [regs, decs] = await Promise.all([
         loadRegistrations(db),
         loadDecisions(db),
       ]);
 
       allRegistrations = regs || [];
-      decisionsById    = new Map();
-      for (const d of decs) {
-        decisionsById.set(d.id, d);
-      }
+      decisionsById = new Map();
+      for (const d of decs) decisionsById.set(d.id, d);
 
       renderList('');
-      syncStatusText.textContent = 'Last synced just now';
-    })
-    .catch((err) => {
+
+      // Status line: show pending/failed when offline; flush when online
+      if (navigator.onLine) {
+        const r = await flushOutbox();
+        syncStatusText.textContent =
+          (r.pending > 0)
+            ? `Online. Synced ${r.sent}. Pending ${r.totalPending}. Failed ${r.totalFailed}.`
+            : 'Online.';
+      } else {
+        const items = await getOutboxByProgram(db, programId);
+        const c = countOutbox(items);
+        syncStatusText.textContent = `Offline mode. Pending ${c.pending}. Failed ${c.failed}.`;
+      }
+
+    } catch (err) {
       console.error('Failed to load registrations from IndexedDB', err);
-      listEl.innerHTML           = '<div class="muted small">Could not load offline data.</div>';
+      listEl.innerHTML = '<div class="muted small">Could not load offline data.</div>';
       syncStatusText.textContent = 'Offline cache unavailable';
-    });
+    }
+  }
+
+  init();
+
+  window.addEventListener('online', async () => {
+    try {
+      const r = await flushOutbox();
+      syncStatusText.textContent =
+        `Back online. Synced ${r.sent}. Pending ${r.totalPending}. Failed ${r.totalFailed}.`;
+    } catch (err) {
+      console.warn('Outbox flush failed', err);
+      syncStatusText.textContent = 'Back online, but sync failed.';
+    }
+  });
+
+  window.addEventListener('offline', async () => {
+    try {
+      const db = await openDb();
+      const items = await getOutboxByProgram(db, programId);
+      const c = countOutbox(items);
+      syncStatusText.textContent = `Offline mode. Pending ${c.pending}. Failed ${c.failed}.`;
+    } catch {
+      syncStatusText.textContent = 'Offline mode.';
+    }
+  });
 
   // live search
-  searchInput.addEventListener('input', (e) => {
-    renderList(e.target.value || '');
-  });
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      renderList(e.target.value || '');
+    });
+  }
 })();
 </script>
-
 
 {% endblock %}

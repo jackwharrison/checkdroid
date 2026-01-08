@@ -57,7 +57,7 @@
 <script>
 (function () {
   const DB_NAME    = 'checkdroid';
-  const DB_VERSION = 2;
+  const DB_VERSION = 3;              // keep in sync with validate page (outbox added)
   const REG_STORE  = 'registrations';
 
   // where we stash the review payload for the next page
@@ -66,82 +66,12 @@
   const root = document.querySelector('.reg-detail-page');
   if (!root) return;
 
-function parseIdsFromPath() {
-  // expects /registration/<programId>/<registrationId>
-  const parts = window.location.pathname.split('/').filter(Boolean);
-  const i = parts.indexOf('registration');
-  if (i === -1 || parts.length < i + 3) return { programId: null, registrationId: null };
-
-  return {
-    programId: parseInt(parts[i + 1], 10) || null,
-    registrationId: parseInt(parts[i + 2], 10) || null,
-  };
-}
-
-const fromUrl = parseIdsFromPath();
-
-const datasetProgramId =
-  parseInt(root.dataset.programId || '', 10) || fromUrl.programId;
-
-const regId =
-  parseInt(root.dataset.registrationId || '', 10) || fromUrl.registrationId;
-
-if (!datasetProgramId || !regId) {
-  showError('Missing program/registration ID in the URL. Please sync online first, then retry offline.');
-  return;
-}
-
-// keep dataset consistent for any downstream code
-root.dataset.programId = String(datasetProgramId);
-root.dataset.registrationId = String(regId);
-
-  const titleEl      = document.getElementById('regTitle');
-  const statusBadge  = document.getElementById('regStatusBadge');
-  const editBtn      = document.getElementById('regEditBtn');
-  const form         = document.getElementById('regEditForm');
-  const fieldsWrap   = document.getElementById('dynamicFields');
-  const errorEl      = document.getElementById('regDetailError');
-  const cancelBtn    = document.getElementById('editCancelBtn');
-  const saveBtn      = document.getElementById('editSaveBtn');
-const backBtn = document.getElementById('backToProgramBtn');
-if (backBtn) {
-  backBtn.addEventListener('click', () => {
-    window.location.href = `/validate?program_id=${encodeURIComponent(datasetProgramId)}`;
-  });
-}
-
-  let originalReg   = null;
-  let referenceId   = null;
-  let editableKeys  = [];
-  let fieldTypes    = {};
-  let mode          = 'view';
-
-  // fields we NEVER show/edit (includes referenceId & programId)
-  const NON_EDITABLE_KEYS = [
-    'id',
-    'programId',
-    'referenceId',
-    'status',
-    'created',
-    'registrationProgramId',
-    'lastMessageStatus',
-    'paymentCount',
-    'paymentCountRemaining',
-    'scope',
-    'duplicateStatus',
-    'programFspConfigurationId',
-    'programFspConfigurationName',
-    'programFspConfigurationLabel',
-    'fspName',
-    'paymentAmountMultiplier',
-    'maxPayments',
-    'personAffectedSequence',
-    'inclusionScore'
-  ];
-
-  // ---------- small helpers ----------
-  function safe(str) {
-    return String(str ?? '');
+  // ---------- helpers (must exist before use) ----------
+  function showError(msg) {
+    const errorEl = document.getElementById('regDetailError');
+    if (!errorEl) return;
+    errorEl.textContent = msg;
+    errorEl.hidden = false;
   }
 
   function escapeHtml(str) {
@@ -162,10 +92,84 @@ if (backBtn) {
       .replace(/^./, c => c.toUpperCase());
   }
 
-  function showError(msg) {
-    errorEl.textContent = msg;
-    errorEl.hidden = false;
+  // ---------- resolve IDs (online render OR offline shell) ----------
+  function parseIdsFromPath() {
+    // expects /registration/<programId>/<registrationId>
+    const parts = window.location.pathname.split('/').filter(Boolean);
+    const i = parts.indexOf('registration');
+    if (i === -1 || parts.length < i + 3) return { programId: null, registrationId: null };
+
+    return {
+      programId: parseInt(parts[i + 1], 10) || null,
+      registrationId: parseInt(parts[i + 2], 10) || null,
+    };
   }
+
+  const fromUrl = parseIdsFromPath();
+
+  const datasetProgramId =
+    parseInt(root.dataset.programId || '', 10) || fromUrl.programId;
+
+  const regId =
+    parseInt(root.dataset.registrationId || '', 10) || fromUrl.registrationId;
+
+  if (!datasetProgramId || !regId) {
+    showError('Missing program/registration ID in the URL. Please sync online first, then retry offline.');
+    return;
+  }
+
+  // keep dataset consistent for downstream code
+  root.dataset.programId = String(datasetProgramId);
+  root.dataset.registrationId = String(regId);
+
+  // ---------- DOM ----------
+  const titleEl      = document.getElementById('regTitle');
+  const statusBadge  = document.getElementById('regStatusBadge');
+  const editBtn      = document.getElementById('regEditBtn');
+  const form         = document.getElementById('regEditForm');
+  const fieldsWrap   = document.getElementById('dynamicFields');
+  const errorEl      = document.getElementById('regDetailError');
+  const cancelBtn    = document.getElementById('editCancelBtn');
+  const saveBtn      = document.getElementById('editSaveBtn');
+  const backBtn      = document.getElementById('backToProgramBtn');
+
+  if (backBtn) {
+    backBtn.addEventListener('click', () => {
+      window.location.href = `/validate?program_id=${encodeURIComponent(datasetProgramId)}`;
+    });
+  }
+
+  let originalReg   = null;
+  let referenceId   = null;
+  let editableKeys  = [];
+  let fieldTypes    = {};
+  let mode          = 'view';
+
+  // fields we NEVER show/edit
+  const NON_EDITABLE_KEYS = [
+    'id',
+    'programId',
+    'referenceId',
+    'status',
+    'created',
+    'registrationProgramId',
+    'lastMessageStatus',
+    'paymentCount',
+    'paymentCountRemaining',
+    'scope',
+    'duplicateStatus',
+    'programFspConfigurationId',
+    'programFspConfigurationName',
+    'programFspConfigurationLabel',
+    'fspName',
+    'paymentAmountMultiplier',
+    'maxPayments',
+    'personAffectedSequence',
+    'inclusionScore',
+    // any local-only fields you may add
+    'validatedAt',
+    'validatedOnDevice',
+  ];
 
   // ---------- IndexedDB ----------
   function openDb() {
@@ -186,28 +190,20 @@ if (backBtn) {
     });
   }
 
-  function saveRegistrationToDb(db, reg) {
-    return new Promise((resolve, reject) => {
-      const tx    = db.transaction(REG_STORE, 'readwrite');
-      const store = tx.objectStore(REG_STORE);
-      const req   = store.put(reg);
-      req.onsuccess = () => resolve();
-      req.onerror   = () => reject(req.error);
-    });
-  }
-
   // ---------- UI ----------
   function setMode(newMode) {
     mode = newMode;
     const editable = (newMode === 'edit');
 
+    // disable/enable fields
     for (const el of form.querySelectorAll('input, select, textarea')) {
       el.disabled = !editable;
     }
 
     if (editable) {
       root.classList.add('editing');
-      errorEl.hidden = true;
+      if (errorEl) errorEl.hidden = true;
+      if (saveBtn) saveBtn.disabled = false;
     } else {
       root.classList.remove('editing');
     }
@@ -225,10 +221,10 @@ if (backBtn) {
       if (val !== null && typeof val === 'object') return; // skip nested objects/arrays
 
       editableKeys.push(key);
-      fieldTypes[key] = typeof val;
+      fieldTypes[key] = (val === null || val === undefined) ? 'string' : typeof val;
     });
 
-    editableKeys.sort(); // stable order
+    editableKeys.sort();
 
     for (const key of editableKeys) {
       const val   = reg[key];
@@ -243,7 +239,7 @@ if (backBtn) {
           id="${id}"
           name="${key}"
           type="text"
-          value="${escapeHtml(val)}"
+          value="${escapeHtml(val ?? '')}"
         >
       `;
       fieldsWrap.appendChild(fieldDiv);
@@ -251,20 +247,21 @@ if (backBtn) {
   }
 
   function fillForm(reg) {
-    referenceId = reg.referenceId;  // used later for PATCH path, not shown
+    referenceId = reg.referenceId;
 
-    titleEl.textContent = `Edit: Registration #${reg.id}`;
+    if (titleEl) titleEl.textContent = `Edit: Registration #${reg.id}`;
 
     const status = String(reg.status || 'new').toLowerCase();
-    statusBadge.textContent = status === 'validated' ? 'Validated' : 'New';
-    statusBadge.className =
-      'reg-status-badge ' +
-      (status === 'validated' ? 'reg-status-validated' : 'reg-status-new');
+    if (statusBadge) {
+      statusBadge.textContent = (status === 'validated') ? 'Validated' : 'New';
+      statusBadge.className =
+        'reg-status-badge ' +
+        ((status === 'validated') ? 'reg-status-validated' : 'reg-status-new');
+    }
 
     buildDynamicFields(reg);
   }
 
-  // ---------- submit helpers ----------
   // ---------- submit helpers ----------
   function collectUpdates() {
     const updates = {};
@@ -279,30 +276,22 @@ if (backBtn) {
       let newVal;
 
       if (type === 'number') {
-        // Numbers: treat blank as "no value"
         const trimmed = (raw || '').trim();
         newVal = trimmed === '' ? null : Number(trimmed);
         if (Number.isNaN(newVal)) newVal = null;
       } else {
-        // Strings (and everything else): trim; blank => null
         const trimmed = (raw || '').trim();
         newVal = trimmed === '' ? null : trimmed;
       }
 
       const oldVal = originalReg[key];
 
-      // Normalise for comparison so null / undefined / "" all count as "empty"
       const normOld =
-        oldVal === null || oldVal === undefined
-          ? ''
-          : String(oldVal).trim();
+        oldVal === null || oldVal === undefined ? '' : String(oldVal).trim();
 
       const normNew =
-        newVal === null || newVal === undefined
-          ? ''
-          : String(newVal).trim();
+        newVal === null || newVal === undefined ? '' : String(newVal).trim();
 
-      // Only record an update if the *meaningful* value changed
       if (normNew !== normOld) {
         updates[key] = newVal;
       }
@@ -324,21 +313,24 @@ if (backBtn) {
       fillForm(reg);
       setMode('view');
 
-      // Buttons
-      editBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        setMode('edit');
-      });
+      if (editBtn) {
+        editBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          setMode('edit');
+        });
+      }
 
-      cancelBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        if (originalReg) fillForm(originalReg);
-        setMode('view');
-      });
+      if (cancelBtn) {
+        cancelBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          if (originalReg) fillForm(originalReg);
+          setMode('view');
+        });
+      }
 
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
-        errorEl.hidden = true;
+        if (errorEl) errorEl.hidden = true;
 
         if (!referenceId) {
           showError('Missing reference ID for this registration.');
@@ -358,8 +350,8 @@ if (backBtn) {
           programId: programId,
           registrationId: originalReg.id,
           referenceId: referenceId,
-          updates: updates,       // may be empty
-          original: originalReg,  // full original object to diff against
+          updates: updates,        // may be empty
+          original: originalReg,   // used for diff
         };
 
         try {
@@ -370,8 +362,10 @@ if (backBtn) {
           return;
         }
 
-        // Go to review/confirmation page (reason + validate)
-        const url = `/validate/review?program_id=${encodeURIComponent(programId)}&registration_id=${encodeURIComponent(originalReg.id)}`;
+        // Go to review page (supports offline shell via querystring)
+        const url =
+          `/validate/review?program_id=${encodeURIComponent(programId)}` +
+          `&registration_id=${encodeURIComponent(originalReg.id)}`;
         window.location.href = url;
       });
     })

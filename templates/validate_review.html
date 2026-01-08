@@ -80,47 +80,54 @@
 <script>
 (function () {
   const DB_NAME    = 'checkdroid';
-  const DB_VERSION = 2;
+  const DB_VERSION = 3; // <-- bump to match validate.html + include outbox store
   const REG_STORE  = 'registrations';
+  const OUTBOX_STORE = 'outbox';
 
   const REVIEW_KEY = 'checkdroid_review_payload';
 
   const root = document.querySelector('.review-page');
   if (!root) return;
 
-function parseIdsFromQueryOrDom(rootEl) {
-  const dsPid = parseInt(rootEl?.dataset?.programId || '', 10) || null;
-  const dsRid = parseInt(rootEl?.dataset?.registrationId || '', 10) || null;
+  // ---------- Helpers used early ----------
+  const reviewError  = document.getElementById('reviewError');
+  function showError(msg) {
+    if (!reviewError) return;
+    reviewError.textContent = msg;
+    reviewError.hidden = false;
+  }
 
-  const qs = new URLSearchParams(window.location.search);
-  const qsPid = parseInt(qs.get('program_id') || '', 10) || null;
-  const qsRid = parseInt(qs.get('registration_id') || '', 10) || null;
+  function parseIdsFromQueryOrDom(rootEl) {
+    const dsPid = parseInt(rootEl?.dataset?.programId || '', 10) || null;
+    const dsRid = parseInt(rootEl?.dataset?.registrationId || '', 10) || null;
 
-  return {
-    programId: dsPid || qsPid,
-    registrationId: dsRid || qsRid,
-  };
-}
+    const qs = new URLSearchParams(window.location.search);
+    const qsPid = parseInt(qs.get('program_id') || '', 10) || null;
+    const qsRid = parseInt(qs.get('registration_id') || '', 10) || null;
 
-const ids = parseIdsFromQueryOrDom(root);
-const programId = ids.programId;
-const registrationId = ids.registrationId;
+    return {
+      programId: dsPid || qsPid,
+      registrationId: dsRid || qsRid,
+    };
+  }
 
-if (!programId || !registrationId) {
-  showError('Missing program/registration ID. Please go back and open the review step again.');
-  return;
-}
+  const ids = parseIdsFromQueryOrDom(root);
+  const programId = ids.programId;
+  const registrationId = ids.registrationId;
 
-// Keep dataset consistent for downstream code
-root.dataset.programId = String(programId);
-root.dataset.registrationId = String(registrationId);
+  if (!programId || !registrationId) {
+    showError('Missing program/registration ID. Please go back and open the review step again.');
+    return;
+  }
+
+  root.dataset.programId = String(programId);
+  root.dataset.registrationId = String(registrationId);
 
   const backBtn      = document.getElementById('reviewBackBtn');
   const changesTable = document.getElementById('changesTable');
   const changesBody  = document.getElementById('changesBody');
   const changesEmpty = document.getElementById('changesEmpty');
   const reviewForm   = document.getElementById('reviewForm');
-  const reviewError  = document.getElementById('reviewError');
   const reasonInput  = document.getElementById('reason');
   const cancelBtn    = document.getElementById('reviewCancelBtn');
   const submitBtn    = document.getElementById('reviewSubmitBtn');
@@ -128,7 +135,6 @@ root.dataset.registrationId = String(registrationId);
   const counterEl    = document.getElementById('reasonCounter');
   const reasonFieldWrap = document.getElementById('reasonFieldWrap');
 
-  // NEW: title + section elements so we can change copy for no-changes case
   const pageTitleEl       = document.getElementById('reviewTitle');
   const sectionTitleEl    = document.getElementById('reviewSectionTitle');
   const sectionHelperEl   = document.getElementById('reviewHelper');
@@ -153,15 +159,29 @@ root.dataset.registrationId = String(registrationId);
       .replace(/^./, c => c.toUpperCase());
   }
 
-  function showError(msg) {
-    reviewError.textContent = msg;
-    reviewError.hidden = false;
-  }
-
   // ---------- IndexedDB helpers ----------
   function openDb() {
     return new Promise((resolve, reject) => {
       const req = indexedDB.open(DB_NAME, DB_VERSION);
+
+      // In case validate page hasn't upgraded DB yet, ensure outbox exists here too
+      req.onupgradeneeded = (event) => {
+        const db = event.target.result;
+
+        if (!db.objectStoreNames.contains(REG_STORE)) {
+          const regStore = db.createObjectStore(REG_STORE, { keyPath: 'id' });
+          regStore.createIndex('by_program', 'programId', { unique: false });
+        }
+
+        if (!db.objectStoreNames.contains(OUTBOX_STORE)) {
+          const out = db.createObjectStore(OUTBOX_STORE, { keyPath: 'id' });
+          out.createIndex('by_status', 'status', { unique: false });
+          out.createIndex('by_created', 'createdAt', { unique: false });
+          out.createIndex('by_reg', 'registrationId', { unique: false });
+          out.createIndex('by_program', 'programId', { unique: false });
+        }
+      };
+
       req.onsuccess = () => resolve(req.result);
       req.onerror   = () => reject(req.error);
     });
@@ -188,6 +208,63 @@ root.dataset.registrationId = String(registrationId);
     });
   }
 
+  function putOutbox(db, item) {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(OUTBOX_STORE, 'readwrite');
+      const store = tx.objectStore(OUTBOX_STORE);
+      const req = store.put(item);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  function uuid() {
+    return crypto.randomUUID ? crypto.randomUUID() :
+      'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = (crypto.getRandomValues(new Uint8Array(1))[0] & 15);
+        const v = c === 'x' ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+      });
+  }
+
+  async function markValidatedLocally() {
+    try {
+      const db = await openDb();
+      const reg = await loadRegistration(db);
+      if (reg) {
+        const nowIso = new Date().toISOString();
+        const updated = {
+          ...reg,
+          ...(payload?.updates || {}),
+          status: 'validated',
+          validatedAt: nowIso,
+          validatedOnDevice: true,
+        };
+        await saveRegistration(db, updated);
+      }
+    } catch (err) {
+      console.warn('Failed to update IndexedDB after confirm/queue', err);
+    }
+  }
+
+  async function queueConfirmRequest(requestBody) {
+    const db = await openDb();
+    await putOutbox(db, {
+      id: uuid(),
+      type: 'confirm',
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      programId: programId,
+      registrationId: registrationId,
+      referenceId: payload.referenceId,
+      request: {
+        url: '/api/registration/confirm',
+        method: 'POST',
+        body: requestBody,
+      },
+    });
+  }
+
   // ---------- Render diffs ----------
   function renderChanges() {
     const updates  = payload.updates || {};
@@ -199,64 +276,37 @@ root.dataset.registrationId = String(registrationId);
     const reasonLabel = document.querySelector('label[for="reason"]');
 
     if (!hasFieldChanges) {
-      // No field changes: adjust copy so page reads as a simple validation step
-      if (pageTitleEl) {
-        pageTitleEl.textContent = 'Validate registration';
-      }
-      if (sectionTitleEl) {
-        sectionTitleEl.textContent = 'Ready to validate';
-      }
-      if (sectionHelperEl) {
-        sectionHelperEl.textContent = 'No fields were changed. You can validate this registration.';
-      }
+      if (pageTitleEl) pageTitleEl.textContent = 'Validate registration';
+      if (sectionTitleEl) sectionTitleEl.textContent = 'Ready to validate';
+      if (sectionHelperEl) sectionHelperEl.textContent = 'No fields were changed. You can validate this registration.';
 
-      // Hide table + diff rows
       changesTable.style.display = 'none';
-      // You can either show or hide this helper; here we keep a simple note:
       changesEmpty.hidden = true;
 
-      // Hide reason box entirely
-      if (reasonFieldWrap) {
-        reasonFieldWrap.style.display = 'none';
-      }
-      if (reasonLabel) {
-        reasonLabel.textContent = 'Provide a reason for these changes (optional)';
-      }
+      if (reasonFieldWrap) reasonFieldWrap.style.display = 'none';
+      if (reasonLabel) reasonLabel.textContent = 'Provide a reason for these changes (optional)';
       return;
     }
 
-    // There ARE changes: keep original "review" copy
-    if (pageTitleEl) {
-      pageTitleEl.textContent = 'Review changes';
-    }
-    if (sectionTitleEl) {
-      sectionTitleEl.textContent = 'Changes to this registration';
-    }
-    if (sectionHelperEl) {
-      sectionHelperEl.textContent = 'Please review edited fields:';
-    }
+    if (pageTitleEl) pageTitleEl.textContent = 'Review changes';
+    if (sectionTitleEl) sectionTitleEl.textContent = 'Changes to this registration';
+    if (sectionHelperEl) sectionHelperEl.textContent = 'Please review edited fields:';
 
     changesTable.style.display = 'table';
     changesEmpty.hidden = true;
 
-    if (reasonFieldWrap) {
-      reasonFieldWrap.style.display = '';
-    }
-    if (reasonLabel) {
-      reasonLabel.textContent = 'Provide a reason for these changes*';
-    }
+    if (reasonFieldWrap) reasonFieldWrap.style.display = '';
+    if (reasonLabel) reasonLabel.textContent = 'Provide a reason for these changes*';
 
     const rows = [];
     for (const key of keys) {
       const beforeVal = original[key];
       const afterVal  = updates[key];
 
-      const beforeStr = beforeVal === null || beforeVal === undefined || beforeVal === ''
-        ? '(empty)'
-        : String(beforeVal);
-      const afterStr  = afterVal === null || afterVal === undefined || afterVal === ''
-        ? '(empty)'
-        : String(afterVal);
+      const beforeStr = (beforeVal === null || beforeVal === undefined || beforeVal === '')
+        ? '(empty)' : String(beforeVal);
+      const afterStr  = (afterVal === null || afterVal === undefined || afterVal === '')
+        ? '(empty)' : String(afterVal);
 
       rows.push(`
         <tr>
@@ -284,9 +334,7 @@ root.dataset.registrationId = String(registrationId);
     return;
   }
 
-  if (subtitleEl) {
-    subtitleEl.textContent = `Registration #${registrationId}`;
-  }
+  if (subtitleEl) subtitleEl.textContent = `Registration #${registrationId}`;
 
   renderChanges();
 
@@ -296,79 +344,98 @@ root.dataset.registrationId = String(registrationId);
       `/registration/${encodeURIComponent(programId)}/${encodeURIComponent(registrationId)}`;
   }
 
-  backBtn.addEventListener('click', goBackToEdit);
-  cancelBtn.addEventListener('click', goBackToEdit);
+  if (backBtn) backBtn.addEventListener('click', goBackToEdit);
+  if (cancelBtn) cancelBtn.addEventListener('click', goBackToEdit);
 
   // Reason character counter (0/500)
   function updateCounter() {
-    if (!hasFieldChanges) return;  // no reason box, no counter needed
+    if (!hasFieldChanges) return;
     const len = (reasonInput.value || '').length;
     if (counterEl) counterEl.textContent = `${len}/500`;
   }
-  reasonInput.addEventListener('input', updateCounter);
+  if (reasonInput) reasonInput.addEventListener('input', updateCounter);
   updateCounter();
 
-  // ---------- Submit: Save + validate ----------
+  // ---------- Submit: Save + validate (or queue) ----------
   reviewForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     reviewError.hidden = true;
 
-    // Only require a reason if there are actual field changes
     const reason = hasFieldChanges ? (reasonInput.value || '').trim() : '';
-
     if (hasFieldChanges && !reason) {
       showError('Please provide a reason for these changes.');
       return;
     }
 
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Saving…';
+    submitBtn.textContent = navigator.onLine ? 'Saving…' : 'Saving offline…';
 
+    const requestBody = {
+      programId: programId,
+      referenceId: payload.referenceId,
+      updates: payload.updates || {},
+      reason: reason || '',
+    };
+
+    // If offline right now, queue immediately
+    if (!navigator.onLine) {
+      try {
+        await queueConfirmRequest(requestBody);
+        await markValidatedLocally();
+
+        sessionStorage.removeItem(REVIEW_KEY);
+        sessionStorage.setItem('checkdroid_validation_success', 'queued');
+        window.location.href = `/validate?program_id=${encodeURIComponent(programId)}`;
+        return;
+      } catch (err) {
+        console.error(err);
+        showError('Offline: could not queue this validation. Please try again.');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Save and validate';
+      }
+      return;
+    }
+
+    // Online path: try network; if it fails, fall back to queue
     try {
       const res = await fetch('/api/registration/confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          programId: programId,
-          referenceId: payload.referenceId,
-          updates: payload.updates || {},
-          reason: reason,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
-      const body = await res.json().catch(() => ({}));
+      const ct = (res.headers.get('content-type') || '').toLowerCase();
+      const isJson = ct.includes('application/json');
+      const body = isJson ? await res.json().catch(() => ({})) : {};
+
       if (!res.ok || body.ok === false) {
-        const msg = body.error || 'Failed to save changes and validate in 121.';
+        const msg = body.error || `Failed to save changes and validate in 121 (HTTP ${res.status}).`;
         throw new Error(msg);
       }
 
-      // ---- Update offline cache: apply updates + mark validated today ----
-      try {
-        const db = await openDb();
-        const reg = await loadRegistration(db);
-        if (reg) {
-          const nowIso = new Date().toISOString();
-          const updated = {
-            ...reg,
-            ...(payload.updates || {}),
-            status: 'validated',
-            validatedAt: nowIso,
-            validatedOnDevice: true,
-          };
-          await saveRegistration(db, updated);
-        }
-      } catch (err) {
-        console.warn('Failed to update IndexedDB after confirm', err);
-      }
+      await markValidatedLocally();
 
-      // Flag success for next page & redirect
       sessionStorage.removeItem(REVIEW_KEY);
       sessionStorage.setItem('checkdroid_validation_success', '1');
       window.location.href = `/validate?program_id=${encodeURIComponent(programId)}`;
 
     } catch (err) {
-      console.error(err);
-      showError(err.message || 'Could not complete validation.');
+      console.warn('Online confirm failed; queuing instead:', err);
+
+      try {
+        await queueConfirmRequest(requestBody);
+        await markValidatedLocally();
+
+        sessionStorage.removeItem(REVIEW_KEY);
+        sessionStorage.setItem('checkdroid_validation_success', 'queued');
+        window.location.href = `/validate?program_id=${encodeURIComponent(programId)}`;
+        return;
+      } catch (queueErr) {
+        console.error(queueErr);
+        showError((err && err.message) ? err.message : 'Could not complete validation.');
+      }
+
     } finally {
       submitBtn.disabled = false;
       submitBtn.textContent = 'Save and validate';
