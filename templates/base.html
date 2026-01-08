@@ -16,9 +16,9 @@
       <button class="icon-btn" aria-label="Menu">☰</button>
       <div class="brand">
         <span class="brand-text">121 Portal</span>
-        <span class="pill pill-online">
-          <span class="pill-icon"></span>
-          <span>Online</span>
+        <span id="netPill" class="pill pill-online">
+        <span class="pill-icon" id="netPillIcon"></span>
+        <span id="netPillText">Online</span>
         </span>
       </div>
     </div>
@@ -150,6 +150,31 @@
       });
     }
   }
+</script>
+<script>
+  (function () {
+    const pill = document.getElementById("netPill");
+    const text = document.getElementById("netPillText");
+    if (!pill || !text) return;
+
+    function setOnlineUI(isOnline) {
+      pill.classList.toggle("pill-online", !!isOnline);
+      pill.classList.toggle("pill-offline", !isOnline);
+      text.textContent = isOnline ? "Online" : "Offline";
+    }
+
+    // Base signal
+    setOnlineUI(navigator.onLine);
+
+    window.addEventListener("online",  () => setOnlineUI(true));
+    window.addEventListener("offline", () => setOnlineUI(false));
+
+    // Optional: if you add the SW "FORCE_OFFLINE" test switch later,
+    // you can override UI too by listening for a custom event.
+    window.setForceOfflineUI = function (enabled) {
+      setOnlineUI(!enabled);
+    };
+  })();
 </script>
 
 </body>
