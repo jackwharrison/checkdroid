@@ -588,7 +588,7 @@ def create_app():
           "programId": 3,
           "referenceId": "uuid-or-ref",
           "updates": { ... },       # may be empty
-          "reason": "text"          # required
+          "reason": "text"         # required only if updates is non-empty
         }
         """
         payload = request.get_json(silent=True) or {}
@@ -600,8 +600,8 @@ def create_app():
 
         if not program_id or not reference_id:
             return jsonify({"ok": False, "error": "Missing programId or referenceId."}), 400
-        if not reason:
-            return jsonify({"ok": False, "error": "Reason is required."}), 400
+        if updates and not reason:
+            return jsonify({"ok": False, "error": "Reason is required when fields are changed."}), 400
 
         try:
             program_id = int(program_id)
