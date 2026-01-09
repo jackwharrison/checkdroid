@@ -1,5 +1,5 @@
 /* static/sw.js */
-const VERSION = "checkdroid-sw-v1"; // bump this on releases
+const VERSION = "checkdroid-sw-v2"; // bump this on releases
 const STATIC_CACHE = `static-${VERSION}`;
 const HTML_CACHE = `html-${VERSION}`;
 
