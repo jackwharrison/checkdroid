@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Offline – Validate – CheckDroid</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/static/styles.css?v=5">
+  <link rel="icon" href="/static/favicon.ico">
+</head>
+
+<body>
+  <div class="validate-page" data-program-id="">
+
+    <!-- Offline banner -->
+    <div class="offline-banner">
+      Offline mode – using cached data
+    </div>
+
+    <!-- Back -->
+    <div style="margin: 8px 0 20px 0;">
+      <button
+        class="btn btn-secondary"
+        type="button"
+        onclick="window.location.href='/offline/index'"
+      >
+        ← Back to home
+      </button>
+    </div>
+
+    <!-- Header -->
+    <section class="validate-header">
+      <div class="validate-header-top">
+        <h1 class="validate-title" id="programTitle">
+          Program
+        </h1>
+      </div>
+
+      <div class="validate-subrow">
+        <div class="sync-status">
+          <span class="sync-status-icon"></span>
+          <span class="sync-status-text" id="syncStatusText">
+            Offline
+          </span>
+        </div>
+
+        <div class="validate-stats">
+          <div class="stat-chip">
+            <div class="stat-chip-value" id="statValidatedToday">0</div>
+            <div class="stat-chip-label">Validated today</div>
+          </div>
+          <div class="stat-chip">
+            <div class="stat-chip-value" id="statSyncedCount">0</div>
+            <div class="stat-chip-label">Cached registrations</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="validate-search">
+        <label class="validate-search-label" for="searchInput">
+          Search registrations
+        </label>
+        <div class="validate-search-input-wrap">
+          <input
+            id="searchInput"
+            type="text"
+            class="validate-search-input"
+            placeholder="Search by name or ID"
+          >
+        </div>
+      </div>
+    </section>
+
+    <!-- List -->
+    <section class="validate-list" id="registrationList">
+      <div class="muted small">
+        Loading cached registrations…
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Logic -->
+  <script>
+    (function () {
+      const DB_NAME = "checkdroid";
+      const DB_VERSION = 3;
+      const REG_STORE = "registrations";
+
+      function getProgramId() {
+        const qs = new URLSearchParams(window.location.search);
+        const pid = parseInt(qs.get("program_id"), 10);
+        return Number.isFinite(pid) ? pid : null;
+      }
+
+      function getProgramTitle(pid) {
+        try {
+          const raw = localStorage.getItem("checkdroid_programs");
+          if (!raw) return `Program ${pid}`;
+          const list = JSON.parse(raw);
+          const hit = list.find(p => Number(p.id) === Number(pid));
+          return hit?.title || `Program ${pid}`;
+        } catch {
+          return `Program ${pid}`;
+        }
+      }
+
+      function openDb() {
+        return new Promise((resolve, reject) => {
+          const req = indexedDB.open(DB_NAME, DB_VERSION);
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+        });
+      }
+
+      function loadRegistrations(db, programId) {
+        return new Promise((resolve, reject) => {
+          const tx = db.transaction(REG_STORE, "readonly");
+          const store = tx.objectStore(REG_STORE);
+          const index = store.index("by_program");
+          const req = index.getAll(IDBKeyRange.only(programId));
+          req.onsuccess = () => resolve(req.result || []);
+          req.onerror = () => reject(req.error);
+        });
+      }
+
+      function escape(str) {
+        return String(str ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
+
+      function render(regs) {
+        const list = document.getElementById("registrationList");
+        const stat = document.getElementById("statSyncedCount");
+        stat.textContent = regs.length;
+
+        if (!regs.length) {
+          list.innerHTML = `<div class="muted small">No cached registrations.</div>`;
+          return;
+        }
+
+        list.innerHTML = regs.map(r => `
+          <article class="reg-card">
+            <div class="reg-main">
+              <div class="reg-header">
+                <div class="reg-title">
+                  Registration #${escape(r.id)}
+                </div>
+              </div>
+              <div class="reg-body">
+                <div><strong>Name:</strong> ${escape(r.fullName || r.name)}</div>
+                ${r.phoneNumber ? `<div><strong>Phone:</strong> ${escape(r.phoneNumber)}</div>` : ""}
+              </div>
+            </div>
+          </article>
+        `).join("");
+      }
+
+      async function init() {
+        const programId = getProgramId();
+        if (!programId) {
+          document.getElementById("registrationList").innerHTML =
+            `<div class="muted small">Missing program ID.</div>`;
+          return;
+        }
+
+        document.querySelector(".validate-page").dataset.programId = programId;
+        document.getElementById("programTitle").textContent =
+          getProgramTitle(programId);
+
+        const db = await openDb();
+        const regs = await loadRegistrations(db, programId);
+        render(regs);
+      }
+
+      init();
+    })();
+  </script>
+</body>
+</html>

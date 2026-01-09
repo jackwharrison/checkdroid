@@ -703,11 +703,11 @@ def create_app():
         return jsonify({"ok": True})
     @app.route("/offline/index")
     def offline_index():
-        return render_template("index.html")
+        return render_template("offline/index.html")
 
     @app.route("/offline/validate")
     def offline_validate():
-        return render_template("validate.html", program_id=0, program_title="")
+        return render_template("offline/validate.html")
 
     @app.route("/offline/registration")
     def offline_registration():
