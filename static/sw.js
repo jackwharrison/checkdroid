@@ -1,99 +1,103 @@
-/* static/sw.js */
-const VERSION = "checkdroid-sw-v2"; // bump this on releases
+// static/sw.js
+
+// CHANGE THIS every time you deploy frontend changes!
+const VERSION = "checkdroid-sw-v3";
 const STATIC_CACHE = `static-${VERSION}`;
 const HTML_CACHE = `html-${VERSION}`;
 
+// List everything you want to precache (offline fallback)
 const PRECACHE_URLS = [
-  // App shell pages (see section 3)
   "/offline/index",
   "/offline/validate",
   "/offline/registration",
   "/offline/review",
-
-  // Static assets
-  "/static/styles.css",
-  "/static/app.js",
+  "/static/styles.css?v=3",
+  "/static/app.js?v=3",
   "/static/icons/user.svg",
   "/static/icons/arrow.svg",
   "/static/favicon.ico",
 ];
+
+// --- INSTALL: Precache core assets ---
 self.addEventListener("install", (event) => {
-  event.waitUntil((async () => {
-    const cache = await caches.open(STATIC_CACHE);
-
-    // Precache sequentially so one missing URL doesn't brick the SW install
-    for (const url of PRECACHE_URLS) {
-      try {
-        const res = await fetch(url, { cache: "no-store" });
-        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-        await cache.put(url, res);
-      } catch (err) {
-        // Keep installing even if one resource fails (important in Flask dev)
-        console.warn("[SW] Precache failed:", url, err);
+  event.waitUntil(
+    (async () => {
+      const cache = await caches.open(STATIC_CACHE);
+      for (const url of PRECACHE_URLS) {
+        try {
+          const res = await fetch(url, { cache: "no-store" });
+          if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+          await cache.put(url, res);
+        } catch (err) {
+          console.warn("[SW] Precache failed:", url, err);
+        }
       }
-    }
-
-    await self.skipWaiting();
-  })());
+      await self.skipWaiting();
+    })()
+  );
 });
 
-
+// --- ACTIVATE: Delete ALL old caches for a guaranteed fresh start ---
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
       const keys = await caches.keys();
-      await Promise.all(
-        keys.map((k) => {
-          if (k !== STATIC_CACHE && k !== HTML_CACHE) return caches.delete(k);
-        })
-      );
+      await Promise.all(keys.map((k) => {
+        if (k !== STATIC_CACHE && k !== HTML_CACHE) {
+          console.log("[SW] Deleting old cache:", k);
+          return caches.delete(k);
+        }
+      }));
       await self.clients.claim();
     })()
   );
 });
 
+// --- Helpers for request detection ---
 function isNavigationRequest(request) {
   return request.mode === "navigate";
 }
-
 function isApiRequest(url) {
   return url.pathname.startsWith("/api/");
 }
-
 function isStaticRequest(url) {
   return url.pathname.startsWith("/static/");
 }
 
+// --- FETCH: Respond to requests based on type ---
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   const url = new URL(req.url);
 
-  // Only handle same-origin
+  // Only handle requests for this origin
   if (url.origin !== self.location.origin) return;
 
-  // 1) Static assets: cache-first
+  // 1) Static assets: cache-first, recache on miss
   if (isStaticRequest(url)) {
     event.respondWith(
       (async () => {
         const cache = await caches.open(STATIC_CACHE);
         const hit = await cache.match(req);
         if (hit) return hit;
-        const res = await fetch(req);
-        cache.put(req, res.clone());
-        return res;
+        try {
+          const res = await fetch(req);
+          cache.put(req, res.clone());
+          return res;
+        } catch (err) {
+          return new Response("Offline", { status: 503 });
+        }
       })()
     );
     return;
   }
 
-  // 2) API: network-first (fall back to cache if you want; many apps skip caching API)
+  // 2) API: network-first, fallback to 503 offline
   if (isApiRequest(url)) {
     event.respondWith(
       (async () => {
         try {
           return await fetch(req);
         } catch (e) {
-          // Optional: return a synthetic offline response
           return new Response(JSON.stringify({ offline: true }), {
             headers: { "Content-Type": "application/json" },
             status: 503,
@@ -104,40 +108,35 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // 3) Navigations (HTML): offline-first app-shell fallback
+  // 3) HTML navigation: network-first, fallback to cached, then offline shell
   if (isNavigationRequest(req)) {
     event.respondWith(
       (async () => {
+        const cache = await caches.open(HTML_CACHE);
         try {
-          // Online: try network first (keeps normal behavior when connected)
-          const networkRes = await fetch(req);
-
-          // Cache a copy of visited pages (optional but useful)
-          const cache = await caches.open(HTML_CACHE);
-          cache.put(req, networkRes.clone());
-
-          return networkRes;
+          const res = await fetch(req);
+          cache.put(req, res.clone());
+          return res;
         } catch (e) {
-          // Offline: try cached exact page first
-          const cache = await caches.open(HTML_CACHE);
+          // First try an exact cached copy
           const cached = await cache.match(req);
           if (cached) return cached;
-
-          // Otherwise: route to the correct offline shell
-          if (url.pathname.startsWith("/registration/")) {
+          // Fallback by path prefix
+          if (url.pathname.startsWith("/registration/"))
             return (await caches.open(STATIC_CACHE)).match("/offline/registration");
-          }
-          if (url.pathname.startsWith("/validate/review")) {
+          if (url.pathname.startsWith("/validate/review"))
             return (await caches.open(STATIC_CACHE)).match("/offline/review");
-          }
-          if (url.pathname.startsWith("/validate")) {
+          if (url.pathname.startsWith("/validate"))
             return (await caches.open(STATIC_CACHE)).match("/offline/validate");
-          }
-          // default
           return (await caches.open(STATIC_CACHE)).match("/offline/index");
         }
       })()
     );
     return;
   }
+});
+
+// --- OPTIONAL: Debug logs for troubleshooting (remove in prod) ---
+self.addEventListener("message", (event) => {
+  if (event.data === "SKIP_WAITING") self.skipWaiting();
 });
