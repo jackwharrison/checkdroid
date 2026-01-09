@@ -5,7 +5,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>{% block title %}CheckDroid{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=3">
 </head>
 <body>
   {% set user_name = session.get("admin_username") or session.get("username") %}
@@ -131,26 +131,36 @@
 
   </script>
 <script>
-  if ("serviceWorker" in navigator) {
-    const disableSw = new URLSearchParams(location.search).get("nosw") === "1";
-    if (!disableSw) {
-      window.addEventListener("load", async () => {
-        try {
-          // If a SW already controls the page, do nothing
-          if (navigator.serviceWorker.controller) return;
+if ("serviceWorker" in navigator) {
+  const disableSw = new URLSearchParams(location.search).get("nosw") === "1";
+  if (!disableSw) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("/sw.js")
+        .then(reg => {
+          console.log("[SW] Registered! Scope:", reg.scope);
 
-          // If an existing registration exists, do nothing
-          const existing = await navigator.serviceWorker.getRegistration("/");
-          if (existing) return;
-
-          await navigator.serviceWorker.register("/sw.js");
-        } catch (err) {
-          console.warn("SW registration failed", err);
-        }
-      });
-    }
+          // Optional: Listen for updates (immediate activation)
+          reg.onupdatefound = () => {
+            const newWorker = reg.installing;
+            newWorker.onstatechange = () => {
+              if (newWorker.state === "installed") {
+                if (navigator.serviceWorker.controller) {
+                  console.log("[SW] New content available; will update on next reload.");
+                } else {
+                  console.log("[SW] Service worker installed for the first time.");
+                }
+              }
+            };
+          };
+        })
+        .catch(err => {
+          console.warn("[SW] Registration failed:", err);
+        });
+    });
   }
+}
 </script>
+
 <script>
   (function () {
     const pill = document.getElementById("netPill");
