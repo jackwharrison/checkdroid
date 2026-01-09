@@ -1,24 +1,24 @@
 // static/sw.js
 
-// CHANGE THIS every time you deploy frontend changes!
-const VERSION = "checkdroid-sw-v3";
+// Bump this VERSION on every deploy!
+const VERSION = "checkdroid-sw-v4";
 const STATIC_CACHE = `static-${VERSION}`;
 const HTML_CACHE = `html-${VERSION}`;
 
-// List everything you want to precache (offline fallback)
+// List all assets and offline pages you want to precache.
 const PRECACHE_URLS = [
   "/offline/index",
   "/offline/validate",
   "/offline/registration",
   "/offline/review",
-  "/static/styles.css?v=3",
-  "/static/app.js?v=3",
+  "/static/styles.css?v=4",
+  "/static/app.js?v=4",
   "/static/icons/user.svg",
   "/static/icons/arrow.svg",
   "/static/favicon.ico",
 ];
 
-// --- INSTALL: Precache core assets ---
+// INSTALL: Precache assets and offline pages.
 self.addEventListener("install", (event) => {
   event.waitUntil(
     (async () => {
@@ -37,23 +37,25 @@ self.addEventListener("install", (event) => {
   );
 });
 
-// --- ACTIVATE: Delete ALL old caches for a guaranteed fresh start ---
+// ACTIVATE: Delete ALL old caches except current version.
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
       const keys = await caches.keys();
-      await Promise.all(keys.map((k) => {
-        if (k !== STATIC_CACHE && k !== HTML_CACHE) {
-          console.log("[SW] Deleting old cache:", k);
-          return caches.delete(k);
-        }
-      }));
+      await Promise.all(
+        keys.map((k) => {
+          if (k !== STATIC_CACHE && k !== HTML_CACHE) {
+            console.log("[SW] Deleting old cache:", k);
+            return caches.delete(k);
+          }
+        })
+      );
       await self.clients.claim();
     })()
   );
 });
 
-// --- Helpers for request detection ---
+// Helpers
 function isNavigationRequest(request) {
   return request.mode === "navigate";
 }
@@ -64,15 +66,15 @@ function isStaticRequest(url) {
   return url.pathname.startsWith("/static/");
 }
 
-// --- FETCH: Respond to requests based on type ---
+// FETCH: Serve requests from the appropriate cache or network.
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   const url = new URL(req.url);
 
-  // Only handle requests for this origin
+  // Only handle same-origin requests.
   if (url.origin !== self.location.origin) return;
 
-  // 1) Static assets: cache-first, recache on miss
+  // 1) Static assets: cache-first.
   if (isStaticRequest(url)) {
     event.respondWith(
       (async () => {
@@ -91,7 +93,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // 2) API: network-first, fallback to 503 offline
+  // 2) API: network-first, fallback to offline 503.
   if (isApiRequest(url)) {
     event.respondWith(
       (async () => {
@@ -108,7 +110,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // 3) HTML navigation: network-first, fallback to cached, then offline shell
+  // 3) Navigations (HTML): network-first, fallback to cached, then offline shell.
   if (isNavigationRequest(req)) {
     event.respondWith(
       (async () => {
@@ -118,10 +120,9 @@ self.addEventListener("fetch", (event) => {
           cache.put(req, res.clone());
           return res;
         } catch (e) {
-          // First try an exact cached copy
           const cached = await cache.match(req);
           if (cached) return cached;
-          // Fallback by path prefix
+          // Fallback by path prefix for offline shell.
           if (url.pathname.startsWith("/registration/"))
             return (await caches.open(STATIC_CACHE)).match("/offline/registration");
           if (url.pathname.startsWith("/validate/review"))
@@ -136,7 +137,11 @@ self.addEventListener("fetch", (event) => {
   }
 });
 
-// --- OPTIONAL: Debug logs for troubleshooting (remove in prod) ---
+// OPTIONAL: Debugging (remove in production)
+// self.addEventListener("fetch", (event) => {
+//   console.log("[SW] Fetch:", event.request.url);
+// });
+
 self.addEventListener("message", (event) => {
   if (event.data === "SKIP_WAITING") self.skipWaiting();
 });

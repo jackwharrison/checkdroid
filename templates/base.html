@@ -5,7 +5,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>{% block title %}CheckDroid{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=3">
+  <!-- MATCH VERSION NUMBER HERE -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=4">
 </head>
 <body>
   {% set user_name = session.get("admin_username") or session.get("username") %}
