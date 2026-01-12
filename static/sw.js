@@ -1,7 +1,7 @@
 // static/sw.js
 
 // Bump this VERSION on every deploy!
-const VERSION = "checkdroid-sw-v4";
+const VERSION = "checkdroid-sw-v5";
 const STATIC_CACHE = `static-${VERSION}`;
 const HTML_CACHE = `html-${VERSION}`;
 
@@ -110,31 +110,49 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // 3) Navigations (HTML): network-first, fallback to cached, then offline shell.
+  // 3) Navigations (HTML)
   if (isNavigationRequest(req)) {
     event.respondWith(
       (async () => {
-        const cache = await caches.open(HTML_CACHE);
+        const htmlCache = await caches.open(HTML_CACHE);
+        const staticCache = await caches.open(STATIC_CACHE);
+
+        const isOfflineFirstRoute =
+          url.pathname === "/" ||
+          url.pathname === "/validate" ||
+          url.pathname === "/validate/review" ||
+          url.pathname.startsWith("/registration/");
+
+        // -------- OFFLINE-FIRST CORE ROUTES --------
+        if (isOfflineFirstRoute) {
+          const cached = await htmlCache.match(req, { ignoreSearch: true });
+          if (cached) return cached;
+
+          // Serve offline shell immediately
+          if (url.pathname.startsWith("/registration/"))
+            return staticCache.match("/offline/registration");
+          if (url.pathname.startsWith("/validate/review"))
+            return staticCache.match("/offline/review");
+          if (url.pathname.startsWith("/validate"))
+            return staticCache.match("/offline/validate");
+          return staticCache.match("/offline/index");
+        }
+
+        // -------- NORMAL NAVIGATION (network-first) --------
         try {
           const res = await fetch(req);
-          cache.put(req, res.clone());
+          htmlCache.put(req, res.clone());
           return res;
         } catch (e) {
-          const cached = await cache.match(req);
+          const cached = await htmlCache.match(req);
           if (cached) return cached;
-          // Fallback by path prefix for offline shell.
-          if (url.pathname.startsWith("/registration/"))
-            return (await caches.open(STATIC_CACHE)).match("/offline/registration");
-          if (url.pathname.startsWith("/validate/review"))
-            return (await caches.open(STATIC_CACHE)).match("/offline/review");
-          if (url.pathname.startsWith("/validate"))
-            return (await caches.open(STATIC_CACHE)).match("/offline/validate");
-          return (await caches.open(STATIC_CACHE)).match("/offline/index");
+          return staticCache.match("/offline/index");
         }
       })()
     );
     return;
   }
+
 });
 
 // OPTIONAL: Debugging (remove in production)
